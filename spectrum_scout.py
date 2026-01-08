@@ -12,7 +12,7 @@ except ImportError:
 
 # --- CONFIGURATION ---
 # Double-check this URL matches the one Lovable gave you!
-WEBHOOK_URL = "https://eggntbwidigxoapturvn.supabase.co/functions/v1/scrap-leads"
+WEBHOOK_URL = "https://eggntbwidigxoapturvn.supabase.co/functions/v1/scrape-leads"
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 if not SUPABASE_KEY:
