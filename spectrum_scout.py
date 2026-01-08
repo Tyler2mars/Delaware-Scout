@@ -1,81 +1,49 @@
 import os
 import requests
-from supabase import create_client, Client
 
 # --- 1. SETUP ---
-# GitHub Actions will "inject" these from your Secrets
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+# This is the "Inbox" URL Lovable gave you
+WEBHOOK_URL = "https://bjblmlrhjbnuseoinzba.supabase.co/functions/v1/scrape-leads"
 
-# Initialize the Supabase Assistant
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("❌ Error: Secrets not found. Check your GitHub Settings!")
-    exit(1)
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# --- 2. THE SCRAPER FUNCTIONS ---
-
-def get_state_bids():
-    """Finds leads from the Delaware OMB/State portals."""
-    # This is a 'placeholder' list. As we refine your scraper, 
-    # this function will eventually crawl the actual websites.
+# --- 2. DATA TO SEND ---
+def get_delaware_leads():
+    """These are the real leads we want to send to Lovable."""
     return [
         {
             "name": "DE Dept of Agriculture Flooring Upgrades",
             "address": "2320 S. Dupont Highway, Dover, DE",
-            "bid_deadline": "2026-01-29",
-            "source": "OMB BidConDocs",
-            "sector": "Government",
-            "description": "Remove and replace 7 phases of flooring. Mandatory pre-bid Jan 14."
-        }
-    ]
-
-def get_school_bids():
-    """Finds leads from DE School District portals."""
-    return [
+            "city": "Dover",
+            "county": "Kent",
+            "latitude": 39.1582,
+            "longitude": -75.5244,
+            "source": "OMB BidConDocs"
+        },
         {
             "name": "CSD School for the Deaf Reno",
             "address": "630 E Chestnut Hill Rd, Newark, DE",
-            "bid_deadline": "2026-01-21",
-            "source": "Christina School District",
-            "sector": "Education",
-            "description": "LVT and Broadloom installation."
-        },
-        {
-            "name": "Heritage Elementary Flooring",
-            "address": "2815 Highlands Lane, Wilmington, DE",
-            "bid_deadline": "2026-02-05",
-            "source": "Red Clay School District",
-            "sector": "Education",
-            "description": "Library wing carpet replacement."
+            "city": "Newark",
+            "county": "New Castle",
+            "latitude": 39.6837,
+            "longitude": -75.7497,
+            "source": "Christina School District"
         }
     ]
 
-# --- 3. THE SYNC ENGINE ---
-
+# --- 3. SENDING THE DATA ---
 def run_sync():
-    print("🚀 Starting Delaware Scout Scraper...")
+    print("🚀 Pushing leads to Lovable Webhook...")
+    leads = get_delaware_leads()
     
-    # Combine all found projects
-    all_projects = get_state_bids() + get_school_bids()
-    
-    for project in all_projects:
-        # We skip anything labeled 'Warehouse' to save you time
-        if "warehouse" in project['name'].lower() or "warehouse" in project['description'].lower():
-            print(f"⏩ Skipping {project['name']} (Reason: Warehouse)")
-            continue
-            
-        # THE MAGIC LINE: .upsert() 
-        # This tells Supabase: 'If the project name exists, update it. If not, create it.'
+    for lead in leads:
         try:
-            supabase.table("projects").upsert(
-                project, 
-                on_conflict="name"
-            ).execute()
-            print(f"✅ Synced: {project['name']}")
+            # This sends the project to Lovable's inbox
+            response = requests.post(WEBHOOK_URL, json=lead)
+            if response.status_code == 200:
+                print(f"✅ Success: {lead['name']} is now on the map!")
+            else:
+                print(f"⚠️ Sent {lead['name']} but got code: {response.status_code}")
         except Exception as e:
-            print(f"❌ Error on {project['name']}: {e}")
+            print(f"❌ Error sending {lead['name']}: {e}")
 
 if __name__ == "__main__":
     run_sync()
