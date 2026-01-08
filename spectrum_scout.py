@@ -1,57 +1,39 @@
 import os
 import requests
-import sys
+import json
 
-# Ensure the script doesn't crash if these aren't installed yet
-try:
-    from bs4 import BeautifulSoup
-except ImportError:
-    print("📦 Installing missing tools...")
-    os.system('pip install beautifulsoup4 requests')
-    from bs4 import BeautifulSoup
+# Your Supabase details (pointing to your REAL project)
+WEBHOOK_URL = "https://eggntbwidigxoapturvn.supabase.co/functions/v1/scrape-leads"
+XAI_API_KEY = os.environ.get("XAI_API_KEY")
 
-# --- CONFIGURATION ---
-# Double-check this URL matches the one Lovable gave you!
-WEBHOOK_URL = "https://eggntbwidigxoapturvn.supabase.co/functions/v1/scrap-leads"
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
-if not SUPABASE_KEY:
-    print("❌ ERROR: SUPABASE_KEY is missing from GitHub Secrets!")
-    sys.exit(1)
-
-def run_sync():
-    # TEST LEAD: We use this to verify the connection first
-    data = {
-        "leads": [
-            {
-                "name": "Manual Lead: Delaware Flooring Opportunity",
-                "address": "Dover, DE",
-                "sector": "Commercial",
-                "latitude": 39.1582,
-                "longitude": -75.5244,
-                "source": "Scraper Test"
-            }
-        ]
-    }
+def get_leads_from_grok():
+    print("🤖 Grok is researching Delaware projects...")
     
+    # This is your EXACT prompt formatted for the API
+    master_prompt = """
+    Search for upcoming commercial construction and renovation projects in Delaware from September 2025 through December 2027 that could involve flooring sales opportunities, excluding warehouse buildings as they typically do not use commercial flooring. Include details like project names, locations, timelines, budgets, owners/developers, architects, general contractors, and bid/RFP deadlines. Focus on sectors such as offices, retail, healthcare, education, hospitality, industrial (non-warehouse), and government buildings. Use reliable sources like Delaware state procurement portals (e.g., MyMarketplace, Bid Express), construction databases (e.g., Dodge Data & Analytics, ConstructConnect, BidClerk), local news outlets, real estate reports, industry associations (e.g., Associated Builders and Contractors Delaware Chapter), ENR MidAtlantic (enr.com), Bisnow Philadelphia (bisnow.com/philadelphia), Delaware Online/The News Journal (delawareonline.com), Cape Gazette (capegazette.com), Delaware State Chamber of Commerce (delawarestatechamber.com), Delaware Contractors Association (delawarecontractors.org), and local county planning sites (e.g., New Castle, Sussex, Kent). Prioritize projects where flooring bids or subcontracts might be open, and compile a comprehensive list with contact info for leads. If possible, include any economic development announcements or planned expansions in Delaware during that period.
+    
+    IMPORTANT: Return the data ONLY as a JSON array of objects. 
+    Each object must have these keys: "name", "address", "sector", "budget", "source".
+    """
+
     headers = {
-        "Content-Type": "application/json",
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}"
+        "Authorization": f"Bearer {XAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    data = {
+        "model": "grok-2-latest", 
+        "messages": [{"role": "user", "content": master_prompt}]
     }
 
-    print(f"🚀 Pushing data to {WEBHOOK_URL}...")
+    response = requests.post("https://api.x.ai/v1/chat/completions", headers=headers, json=data)
     
-    try:
-        response = requests.post(WEBHOOK_URL, json=data, headers=headers)
-        print(f"📡 Status Code: {response.status_code}")
-        
-        if response.status_code == 200:
-            print("✅ SUCCESS: Data landed in Supabase.")
-        else:
-            print(f"⚠️ FAILED: {response.text}")
-    except Exception as e:
-        print(f"❌ CONNECTION ERROR: {e}")
+    # Parse the JSON out of Grok's text response
+    raw_content = response.json()['choices'][0]['message']['content']
+    return json.loads(raw_content.strip('```json').strip('```'))
 
-if __name__ == "__main__":
-    run_sync()
+def push_to_supabase(leads):
+    print(f"🚀 Pushing {len(leads)} Grok-verified leads to your map...")
+    # Add your Supabase headers and post request here
+    # ...
