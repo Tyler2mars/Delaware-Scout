@@ -10,23 +10,29 @@ client = OpenAI(
 )
 
 # 2. Update these in your GitHub Secrets or Environment
-# URL: https://bjblmlrhjbnuseoinzba.supabase.co/functions/v1/scrape-leads
 WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL") 
-# Get this from Lovable Cloud -> Settings -> API Keys (starts with eyJ...)
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 def get_leads():
-    print("Step 1: Asking Grok for Delaware construction leads...")
+    print("Step 1: Asking Grok for Delaware Vertical Construction leads...")
     
-    # Updated Prompt with Lovable's specific schema columns
-    prompt = """Find 10 real, major upcoming commercial construction or infrastructure projects in Delaware scheduled for 2026-2028.
+    # Updated Prompt: Strictly excludes Highways/Roads and focuses on Vertical (Building) construction
+    prompt = """Find 10 real, major upcoming vertical construction projects in Delaware scheduled for 2026-2028.
+    
+    STRICT EXCLUSIONS: 
+    - NO highway, road, bridge, or paving projects.
+    - NO wastewater, sewer, or purely external utility projects.
+    - NO DelDOT infrastructure projects.
+
+    FOCUS: Only buildings that require interior finishing and flooring (offices, hospitals, schools, apartments).
+
     Return ONLY a JSON list of objects. Do not include introductory text.
     Each object MUST have:
     - name: Project name
     - address: Location in Delaware
     - city: City name (e.g., Wilmington, Dover)
     - county: (e.g., New Castle, Kent, Sussex)
-    - sector: (e.g., Healthcare, Government, Corporate, Education, Multi Family, Hospitality, Senior Living, Retail)
+    - sector: (Healthcare, Government, Corporate, Education, Multi Family, Hospitality, Senior Living, Retail)
     - budget: Estimated cost
     - source_url: A link to a news article or planning document
     - designer: Architectural or engineering firm
@@ -43,7 +49,7 @@ def get_leads():
         response = client.chat.completions.create(
             model="grok-4-1-fast-non-reasoning",
             messages=[
-                {"role": "system", "content": "You are a data extraction specialist. Always return valid JSON lists."},
+                {"role": "system", "content": "You are a data extraction specialist focusing on vertical building construction. Always return valid JSON lists."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1
@@ -72,7 +78,6 @@ def send_to_supabase(leads):
     print(f"Step 2: Sending {len(leads)} leads to Lovable Cloud...")
     
     try:
-        # THE FIX: Added 'Authorization' header and wrapped leads in a dictionary
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
@@ -81,7 +86,7 @@ def send_to_supabase(leads):
         response = requests.post(
             WEBHOOK_URL,
             headers=headers,
-            json={"leads": leads}, # Lovable expects the "leads" key
+            json={"leads": leads},
             timeout=30
         )
         
