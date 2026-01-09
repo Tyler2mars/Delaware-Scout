@@ -3,8 +3,7 @@ import json
 import requests
 from openai import OpenAI
 
-# 1. Setup Clients
-# Using OpenAI client because xAI is fully compatible
+# 1. Setup Client
 client = OpenAI(
     api_key=os.environ.get("XAI_API_KEY"),
     base_url="https://api.x.ai/v1",
@@ -15,7 +14,6 @@ WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
 def get_leads():
     print("Step 1: Asking Grok for Delaware construction leads...")
     
-    # We use a highly specific prompt to force valid JSON
     prompt = """Find 20 real, major upcoming commercial construction or infrastructure projects in Delaware scheduled for 2026-2028.
     Return ONLY a JSON list of objects. Do not include introductory text.
     Each object MUST have:
@@ -33,17 +31,22 @@ def get_leads():
 
     try:
         response = client.chat.completions.create(
-            model="grok-4.1-fast-non-reasoning",
+            model="grok-4-1-fast-non-reasoning", # Updated to the latest fast model
             messages=[
                 {"role": "system", "content": "You are a data extraction specialist. Always return valid JSON lists."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.2 # Lower temperature = more consistent data
+            temperature=0.1
         )
+        
+        # Calculate Cost (Based on 2026 pricing: $0.20 per 1M in / $0.50 per 1M out)
+        input_cost = (response.usage.prompt_tokens / 1_000_000) * 0.20
+        output_cost = (response.usage.completion_tokens / 1_000_000) * 0.50
+        total_cost = input_cost + output_cost
         
         raw_content = response.choices[0].message.content.strip()
         
-        # CLEANING STEP: Remove AI "markdown" markers if present
+        # Clean AI markdown markers
         if raw_content.startswith("```"):
             raw_content = raw_content.split("\n", 1)[1].rsplit("\n", 1)[0].strip()
             if raw_content.startswith("json"):
@@ -51,11 +54,11 @@ def get_leads():
 
         leads = json.loads(raw_content)
         print(f"DEBUG: AI found {len(leads)} leads.")
+        print(f"DEBUG: Estimated Run Cost: ${total_cost:.5f}")
         return leads
 
     except Exception as e:
         print(f"ERROR during AI search: {e}")
-        print(f"RAW CONTENT RECEIVED: {raw_content if 'raw_content' in locals() else 'None'}")
         return []
 
 def send_to_supabase(leads):
@@ -66,7 +69,6 @@ def send_to_supabase(leads):
     print(f"Step 2: Sending {len(leads)} leads to Supabase...")
     
     try:
-        # We send the list as a dictionary key "leads" to match your Edge Function
         response = requests.post(
             WEBHOOK_URL,
             headers={"Content-Type": "application/json"},
@@ -78,7 +80,6 @@ def send_to_supabase(leads):
             print("SUCCESS: Data accepted by Supabase.")
         else:
             print(f"FAILED: Supabase returned {response.status_code}")
-            print(f"Response Body: {response.text}")
 
     except Exception as e:
         print(f"ERROR sending to Supabase: {e}")
