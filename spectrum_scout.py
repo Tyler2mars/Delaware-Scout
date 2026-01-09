@@ -33,7 +33,7 @@ def get_leads():
 
     try:
         response = client.chat.completions.create(
-            model="grok-beta", # Or grok-2 if available
+            model="grok-4.1-fast-non-reasoning",
             messages=[
                 {"role": "system", "content": "You are a data extraction specialist. Always return valid JSON lists."},
                 {"role": "user", "content": prompt}
