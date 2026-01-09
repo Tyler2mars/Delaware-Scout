@@ -1,9 +1,11 @@
-name: Weekly Project Scout
+name: Daily Weekday Project Scout
 
 on:
   workflow_dispatch: # Allows you to run it manually
   schedule:
-    - cron: '0 9 * * *' # Updated: Runs at 9:00 AM EVERY DAY for fresh data
+    # 7:00 AM EST is 12:00 PM UTC. 
+    # '1-5' means Monday through Friday.
+    - cron: '0 12 * * 1-5' 
 
 jobs:
   scrape:
@@ -26,6 +28,5 @@ jobs:
         env:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           SUPABASE_WEBHOOK_URL: ${{ secrets.SUPABASE_WEBHOOK_URL }}
-          # NEW: Added the Anon Key for Lovable Cloud authentication
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: python spectrum_scout.py
