@@ -2,81 +2,67 @@ import os
 import requests
 import json
 
-# Configuration
-WEBHOOK_URL = "https://eggntbwidigxoapturvn.supabase.co/functions/v1/scrape-leads"
+# 1. Configuration - Use your Secret in GitHub Settings for the API Key
 XAI_API_KEY = os.environ.get("XAI_API_KEY")
+# Your Supabase Edge Function URL
+WEBHOOK_URL = "https://eggntbwidigxoapturvn.supabase.co/functions/v1/scrape-leads"
 
-def get_leads_from_grok():
-    print("🤖 Grok is researching Delaware projects...")
+def scout_delaware_projects():
+    print("🚀 Starting Delaware Project Scout...")
     
-    # Expanded prompt to include all 10 fields matching your database columns
+    # The prompt tells Grok exactly what to look for and how to format it
     master_prompt = """
-    Search for upcoming commercial construction and renovation projects in Delaware from September 2025 through December 2027 
-    that could involve flooring sales opportunities, excluding warehouse buildings. 
-    
-    Focus on sectors: offices, retail, healthcare, education, hospitality, non-warehouse industrial, and government.
-    
-    IMPORTANT: Return the data ONLY as a JSON array of objects. 
-    Each object must have these EXACT keys: 
-    "name", "address", "sector", "budget", "source", "designer", "latitude", "longitude", "general_contractor", "deadline"
-    
-    Ensure latitude and longitude are numbers, not strings. Use null if data is missing for a specific field.
+    Search for the latest commercial construction projects, public works, or large-scale residential developments in Delaware from the last 30 days.
+    Return a JSON list of exactly 10 projects. 
+    For each project, include: 
+    'name', 'address', 'sector', 'budget', 'source_url', 'designer', 'latitude', 'longitude', 'general_contractor', and 'deadline'.
+    If a field is unknown, use "N/A". 
+    Format the output as a valid JSON array of objects.
     """
 
     headers = {
-        "Authorization": f"Bearer {XAI_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {XAI_API_KEY}"
     }
-    
+
+    # 2. Optimized Model Settings
     data = {
-        "model": "grok-2-latest", 
-        "messages": [{"role": "user", "content": master_prompt}]
+        "model": "grok-4-1-fast-non-reasoning", # The fastest and most cost-effective version
+        "messages": [
+            {"role": "system", "content": "You are a professional construction lead researcher. Output only raw JSON."},
+            {"role": "user", "content": master_prompt}
+        ],
+        "temperature": 0,      # Keeps the AI factual and prevents "rambling"
+        "max_tokens": 1200     # Hard cap to prevent high token costs
     }
 
     try:
+        # Request data from xAI
         response = requests.post("https://api.x.ai/v1/chat/completions", headers=headers, json=data)
-        response.raise_for_status() # Check for HTTP errors
+        response.raise_for_status()
         
-        raw_content = response.json()['choices'][0]['message']['content']
+        # Extract the JSON content from the AI response
+        content = response.json()['choices'][0]['message']['content']
         
-        # Clean the response in case Grok includes markdown code blocks
-        clean_json = raw_content.strip().replace('```json', '').replace('```', '')
-        return json.loads(clean_json)
-        
-    except Exception as e:
-        print(f"❌ Error during Grok research: {e}")
-        return []
+        # Clean the string in case Grok adds ```json markdown blocks
+        clean_json = content.replace("```json", "").replace("```", "").strip()
+        leads = json.loads(clean_json)
 
-def push_to_supabase(leads):
-    if not leads:
-        print("⚠️ No leads found to push.")
-        return
-
-    print(f"🚀 Pushing {len(leads)} Grok-verified leads to Supabase...")
-    
-    # We wrap the array in a 'leads' key to match your Edge Function logic
-    payload = {"leads": leads}
-    
-    try:
-        response = requests.post(
+        # 3. Send to Supabase
+        print(f"✅ Found {len(leads)} leads. Sending to Supabase...")
+        db_response = requests.post(
             WEBHOOK_URL, 
-            json=payload,
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"}, 
+            json={"leads": leads}
         )
         
-        if response.status_code == 200:
-            print("✅ Successfully updated Supabase table editor!")
+        if db_response.status_code == 200:
+            print("🎉 Successfully synced leads to Supabase!")
         else:
-            print(f"❌ Database Rejection: {response.status_code}")
-            print(f"Details: {response.text}")
-            
-    except Exception as e:
-        print(f"❌ Connection Error: {e}")
+            print(f"❌ Supabase Error: {db_response.text}")
 
-# Entry point for the script
+    except Exception as e:
+        print(f"⚠️ An error occurred: {e}")
+
 if __name__ == "__main__":
-    if not XAI_API_KEY:
-        print("❌ Error: XAI_API_KEY not found in environment variables.")
-    else:
-        leads_data = get_leads_from_grok()
-        push_to_supabase(leads_data)
+    scout_delaware_projects()
