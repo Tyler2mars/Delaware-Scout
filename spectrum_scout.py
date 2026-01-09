@@ -5,7 +5,7 @@ import json
 # 1. Configuration - Use your Secret in GitHub Settings for the API Key
 XAI_API_KEY = os.environ.get("XAI_API_KEY")
 # Your Supabase Edge Function URL
-WEBHOOK_URL = "https://eggntbwidigxoapturvn.supabase.co/functions/v1/scrape-leads"
+WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
 
 def scout_delaware_projects():
     print("🚀 Starting Delaware Project Scout...")
