@@ -26,7 +26,7 @@ def get_leads():
     - address: Location in Delaware
     - city: City name (e.g., Wilmington, Dover)
     - county: (e.g., New Castle, Kent, Sussex)
-    - sector: (e.g., Education, Healthcare, Transport)
+    - sector: (e.g., Healthcare, Government, Corporate, Education, Multi Family, Hospitality, Senior Living, Retail)
     - budget: Estimated cost
     - source_url: A link to a news article or planning document
     - designer: Architectural or engineering firm
