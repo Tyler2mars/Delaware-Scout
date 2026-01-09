@@ -1,27 +1,25 @@
-name: Hourly Delaware Scrape
+name: Daily Project Scout
 on:
   schedule:
-    - cron: '0 * * * *'  # This tells it to run at the start of every hour
-  workflow_dispatch:      # This adds a "Play" button so you can test it manually
+    - cron: '0 13 * * *' # Runs every day at 8:00 AM EST
+  workflow_dispatch: # Allows you to run it manually for testing
 
 jobs:
-  run-scraper:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.9'
 
       - name: Install dependencies
-        run: |
-          pip install supabase requests
+        run: pip install requests
 
       - name: Run Scraper
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python spectrum_scout.py
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+        run: python Spectrum_scout.py
