@@ -1,66 +1,88 @@
 import os
-import requests
 import json
+import requests
+from openai import OpenAI
 
-# Configuration
-XAI_API_KEY = os.environ.get("XAI_API_KEY")
+# 1. Setup Clients
+# Using OpenAI client because xAI is fully compatible
+client = OpenAI(
+    api_key=os.environ.get("XAI_API_KEY"),
+    base_url="https://api.x.ai/v1",
+)
+
 WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
 
-def scout_delaware_projects():
-    print("🚀 Starting Delaware Weekly Scout (Target: 20 Leads)...")
+def get_leads():
+    print("Step 1: Asking Grok for Delaware construction leads...")
     
-    # We explicitly ask for 20 leads and the 2026-2028 timeline
-    master_prompt = """
-    Identify exactly 20 commercial or public construction projects in Delaware.
-    
-    CRITICAL FILTERS:
-    1. Physical construction start date must be between January 2026 and January 2028.
-    2. Focus on Planning, Bidding, Permitting, or Pre-construction phases.
-    
-    For each project, return a JSON list of objects with: 
-    'name', 'address', 'sector', 'budget', 'source_url', 'designer', 'latitude', 'longitude', 'general_contractor', and 'deadline'.
-    
-    Output ONLY a valid JSON array. No conversational text.
+    # We use a highly specific prompt to force valid JSON
+    prompt = """Find 20 real, major upcoming commercial construction or infrastructure projects in Delaware scheduled for 2026-2028.
+    Return ONLY a JSON list of objects. Do not include introductory text.
+    Each object MUST have:
+    - name: Project name
+    - address: Location in Delaware
+    - sector: (e.g., Education, Healthcare, Transport)
+    - budget: Estimated cost
+    - source_url: A link to a news article or planning document
+    - designer: Architectural or engineering firm
+    - general_contractor: GC name or 'TBD'
+    - deadline: Estimated completion date
+    - latitude: Numeric latitude
+    - longitude: Numeric longitude
     """
 
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {XAI_API_KEY}"
-    }
-
-    data = {
-        "model": "grok-4-1-fast-non-reasoning", 
-        "messages": [
-            {"role": "system", "content": "You are a professional construction researcher. Return only raw JSON data."},
-            {"role": "user", "content": master_prompt}
-        ],
-        "temperature": 0.1,    # Tiny bit of variety to help find a larger list of 20
-        "max_tokens": 3000     # INCREASED: 20 projects require more space to write
-    }
-
     try:
-        response = requests.post("https://api.x.ai/v1/chat/completions", headers=headers, json=data)
-        response.raise_for_status()
-        
-        content = response.json()['choices'][0]['message']['content']
-        clean_json = content.replace("```json", "").replace("```", "").strip()
-        leads = json.loads(clean_json)
-
-        print(f"✅ Successfully found {len(leads)} leads. Sending to Supabase...")
-        
-        db_response = requests.post(
-            WEBHOOK_URL, 
-            headers={"Content-Type": "application/json"}, 
-            json={"leads": leads}
+        response = client.chat.completions.create(
+            model="grok-beta", # Or grok-2 if available
+            messages=[
+                {"role": "system", "content": "You are a data extraction specialist. Always return valid JSON lists."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2 # Lower temperature = more consistent data
         )
         
-        if db_response.status_code == 200:
-            print("🎉 Database updated successfully!")
-        else:
-            print(f"❌ Supabase Error: {db_response.text}")
+        raw_content = response.choices[0].message.content.strip()
+        
+        # CLEANING STEP: Remove AI "markdown" markers if present
+        if raw_content.startswith("```"):
+            raw_content = raw_content.split("\n", 1)[1].rsplit("\n", 1)[0].strip()
+            if raw_content.startswith("json"):
+                raw_content = raw_content[4:].strip()
+
+        leads = json.loads(raw_content)
+        print(f"DEBUG: AI found {len(leads)} leads.")
+        return leads
 
     except Exception as e:
-        print(f"⚠️ Error: {e}")
+        print(f"ERROR during AI search: {e}")
+        print(f"RAW CONTENT RECEIVED: {raw_content if 'raw_content' in locals() else 'None'}")
+        return []
+
+def send_to_supabase(leads):
+    if not leads:
+        print("No leads to send. Skipping Supabase update.")
+        return
+
+    print(f"Step 2: Sending {len(leads)} leads to Supabase...")
+    
+    try:
+        # We send the list as a dictionary key "leads" to match your Edge Function
+        response = requests.post(
+            WEBHOOK_URL,
+            headers={"Content-Type": "application/json"},
+            json={"leads": leads},
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            print("SUCCESS: Data accepted by Supabase.")
+        else:
+            print(f"FAILED: Supabase returned {response.status_code}")
+            print(f"Response Body: {response.text}")
+
+    except Exception as e:
+        print(f"ERROR sending to Supabase: {e}")
 
 if __name__ == "__main__":
-    scout_delaware_projects()
+    new_leads = get_leads()
+    send_to_supabase(new_leads)
