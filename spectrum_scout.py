@@ -9,16 +9,23 @@ client = OpenAI(
     base_url="https://api.x.ai/v1",
 )
 
-WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
+# 2. Update these in your GitHub Secrets or Environment
+# URL: https://bjblmlrhjbnuseoinzba.supabase.co/functions/v1/scrape-leads
+WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL") 
+# Get this from Lovable Cloud -> Settings -> API Keys (starts with eyJ...)
+SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 def get_leads():
     print("Step 1: Asking Grok for Delaware construction leads...")
     
+    # Updated Prompt with Lovable's specific schema columns
     prompt = """Find 20 real, major upcoming commercial construction or infrastructure projects in Delaware scheduled for 2026-2028.
     Return ONLY a JSON list of objects. Do not include introductory text.
     Each object MUST have:
     - name: Project name
     - address: Location in Delaware
+    - city: City name (e.g., Wilmington, Dover)
+    - county: (e.g., New Castle, Kent, Sussex)
     - sector: (e.g., Education, Healthcare, Transport)
     - budget: Estimated cost
     - source_url: A link to a news article or planning document
@@ -27,22 +34,20 @@ def get_leads():
     - deadline: Estimated completion date
     - latitude: Numeric latitude
     - longitude: Numeric longitude
+    - description: Short summary of the project
+    - flooring_tags: A list of strings (e.g., ["LVT", "Carpet", "Tile"])
+    - estimated_sqft: A numeric value for square footage
     """
 
     try:
         response = client.chat.completions.create(
-            model="grok-4-1-fast-non-reasoning", # Updated to the latest fast model
+            model="grok-4-1-fast-non-reasoning",
             messages=[
                 {"role": "system", "content": "You are a data extraction specialist. Always return valid JSON lists."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1
         )
-        
-        # Calculate Cost (Based on 2026 pricing: $0.20 per 1M in / $0.50 per 1M out)
-        input_cost = (response.usage.prompt_tokens / 1_000_000) * 0.20
-        output_cost = (response.usage.completion_tokens / 1_000_000) * 0.50
-        total_cost = input_cost + output_cost
         
         raw_content = response.choices[0].message.content.strip()
         
@@ -53,8 +58,6 @@ def get_leads():
                 raw_content = raw_content[4:].strip()
 
         leads = json.loads(raw_content)
-        print(f"DEBUG: AI found {len(leads)} leads.")
-        print(f"DEBUG: Estimated Run Cost: ${total_cost:.5f}")
         return leads
 
     except Exception as e:
@@ -66,20 +69,26 @@ def send_to_supabase(leads):
         print("No leads to send. Skipping Supabase update.")
         return
 
-    print(f"Step 2: Sending {len(leads)} leads to Supabase...")
+    print(f"Step 2: Sending {len(leads)} leads to Lovable Cloud...")
     
     try:
+        # THE FIX: Added 'Authorization' header and wrapped leads in a dictionary
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
+        }
+        
         response = requests.post(
             WEBHOOK_URL,
-            headers={"Content-Type": "application/json"},
-            json={"leads": leads},
+            headers=headers,
+            json={"leads": leads}, # Lovable expects the "leads" key
             timeout=30
         )
         
         if response.status_code == 200:
-            print("SUCCESS: Data accepted by Supabase.")
+            print("SUCCESS: Data accepted by Lovable Cloud.")
         else:
-            print(f"FAILED: Supabase returned {response.status_code}")
+            print(f"FAILED: Status {response.status_code} - {response.text}")
 
     except Exception as e:
         print(f"ERROR sending to Supabase: {e}")
