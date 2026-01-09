@@ -1,11 +1,11 @@
-name: Daily Project Scout
+name: Weekly Project Scout
 
 on:
   schedule:
-    # This runs the scraper automatically every day at 8:00 AM EST (13:00 UTC)
-    - cron: '0 13 * * *'
+    # Runs at 13:00 UTC (8:00 AM EST) every Monday
+    - cron: '0 13 * * 1'
   workflow_dispatch: 
-    # This adds a "Run workflow" button in GitHub Actions so you can test manually
+    # This allows you to run it manually anytime, even if it's not Monday
 
 jobs:
   build:
@@ -27,7 +27,6 @@ jobs:
 
       - name: Run Scraper
         env:
-          # This connects your GitHub Secrets to the Python script
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           SUPABASE_WEBHOOK_URL: ${{ secrets.SUPABASE_WEBHOOK_URL }}
         run: python Spectrum_scout.py
