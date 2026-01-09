@@ -2,8 +2,10 @@ name: Weekly Project Scout
 
 on:
   schedule:
+    # Runs at 13:00 UTC (8:00 AM EST) every Monday
     - cron: '0 13 * * 1'
   workflow_dispatch: 
+    # Adds a manual "Run" button in GitHub Actions
 
 jobs:
   build:
@@ -23,13 +25,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
-      # This step confirms EXACTLY what your file is named
-      - name: Check file existence
+      - name: List files for debugging
+        # This will show you exactly what GitHub sees in your folder
         run: ls -R
 
       - name: Run Scraper
         env:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           SUPABASE_WEBHOOK_URL: ${{ secrets.SUPABASE_WEBHOOK_URL }}
-        # We use ./ to tell Python to look exactly in the current folder
-        run: python ./Spectrum_scout.py
+        # Updated to lowercase to match your filename
+        run: python spectrum_scout.py
