@@ -19,7 +19,7 @@ def get_leads():
     print("Step 1: Asking Grok for Delaware construction leads...")
     
     # Updated Prompt with Lovable's specific schema columns
-    prompt = """Find 20 real, major upcoming commercial construction or infrastructure projects in Delaware scheduled for 2026-2028.
+    prompt = """Find 10 real, major upcoming commercial construction or infrastructure projects in Delaware scheduled for 2026-2028.
     Return ONLY a JSON list of objects. Do not include introductory text.
     Each object MUST have:
     - name: Project name
