@@ -1,37 +1,29 @@
 name: Weekly Project Scout
 
 on:
+  workflow_dispatch: # Allows you to run it manually
   schedule:
-    # Runs at 13:00 UTC (8:00 AM EST) every Monday
-    - cron: '0 13 * * 1'
-  workflow_dispatch: 
-    # Adds a manual "Run" button in GitHub Actions
+    - cron: '0 9 * * 1' # Runs at 9:00 AM every Monday
 
 jobs:
-  build:
+  scrape:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests
-
-      - name: List files for debugging
-        # This will show you exactly what GitHub sees in your folder
-        run: ls -R
+          pip install requests openai
 
       - name: Run Scraper
         env:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           SUPABASE_WEBHOOK_URL: ${{ secrets.SUPABASE_WEBHOOK_URL }}
-        # Updated to lowercase to match your filename
         run: python spectrum_scout.py
