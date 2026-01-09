@@ -3,7 +3,7 @@ import requests
 import json
 
 # Your Supabase details (pointing to your REAL project)
-WEBHOOK_URL = "https://eggntbwidigxoapturvn.supabase.co/functions/v1/scrap-leads"
+WEBHOOK_URL = "https://eggntbwidigxoapturvn.supabase.co/functions/v1/scrape-leads"
 XAI_API_KEY = os.environ.get("XAI_API_KEY")
 
 def get_leads_from_grok():
