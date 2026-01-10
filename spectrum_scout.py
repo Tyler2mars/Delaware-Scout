@@ -123,10 +123,7 @@ JSON format:
         
         # Get response with web search
         print("🔍 Grok is now searching the web for real projects...")
-        response = chat.sample(
-            temperature=0.2,
-            max_tokens=6000
-        )
+        response = chat.sample()
         
         raw_content = response.content.strip()
         print(f"📄 Received response ({len(raw_content)} characters)")
@@ -231,3 +228,4 @@ if __name__ == "__main__":
         print("  • Check if xAI API key has web search permissions")
         print("  • Try broadening search to include more Delaware counties")
         print("  • Adjust date ranges in search queries")
+
