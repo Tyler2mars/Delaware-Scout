@@ -1,23 +1,30 @@
 name: Monday & Thursday Project Scout
 
 on:
-  workflow_dispatch: # Still allows manual runs
+  workflow_dispatch: 
   schedule:
-    # 7:00 AM EST is 12:00 PM UTC.
-    # '1,4' means Monday (1) and Thursday (4).
-    - cron: '0 12 * * 1,4' 
+    # 7:00 AM EST (12:00 PM UTC) on Mon (1) and Thu (4)
+    - cron: '0 12 * * 1,4'
+
+# This prevents multiple runs from stacking up if one gets stuck
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    # If the script doesn't finish in 10 mins, GitHub will kill it
+    timeout-minutes: 10 
+    
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.10'
 
       - name: Install dependencies
         run: |
@@ -29,4 +36,5 @@ jobs:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           SUPABASE_WEBHOOK_URL: ${{ secrets.SUPABASE_WEBHOOK_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        # Adding a timeout to the python command itself for double protection
         run: python spectrum_scout.py
