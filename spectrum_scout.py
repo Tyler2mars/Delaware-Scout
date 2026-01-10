@@ -39,6 +39,13 @@ Return ONLY valid JSON - no introductory text."""
     # User prompt with specific search instructions
     user_prompt = """Find 10 REAL vertical construction projects in Delaware that are currently in PLANNING or DESIGN phase (NOT yet out to bid).
 
+CRITICAL DATE FILTERING:
+- TODAY'S DATE: January 10, 2026
+- Only include projects where construction has NOT YET STARTED
+- Exclude any project with "groundbreaking", "construction began", "under construction", "topped out", "nearing completion"
+- Target: Projects with construction start dates in FUTURE (Q2 2026 or later)
+- After finding each project, VERIFY it hasn't started construction yet by searching "[project name] construction status 2026"
+
 SEARCH QUERIES TO RUN:
 1. "Delaware planning board approval 2025 2026"
 2. "Delaware zoning approval commercial development"
@@ -48,6 +55,24 @@ SEARCH QUERIES TO RUN:
 6. "New Castle County development proposal"
 7. "Kent County Delaware construction plans"
 8. "Sussex County Delaware building project"
+9. "Delaware architectural firm selected design"
+10. "[Project name] architect Delaware" (for each project found)
+
+VERIFICATION STEP (CRITICAL):
+For each project found, search to confirm current status:
+- "[Project name] Delaware construction status"
+- "[Project name] groundbreaking date"
+- Look for recent news (last 30 days) about the project
+- If you find "construction started", "workers on site", "framing complete" - REJECT IT
+
+CRITICAL: ARCHITECT/DESIGNER INFORMATION IS PRIORITY
+For EVERY project, make additional searches to find the architect/designer:
+- Search the project name + "architect" or "designer"
+- Check architectural firm websites and project portfolios
+- Look for design award announcements
+- Search permit records which often list architect of record
+- Check local AIA chapter announcements
+- If not found initially, search "[developer name] architect Delaware"
 
 PROJECT STAGE KEYWORDS TO FIND:
 - "Planning approval", "Zoning approved", "Site plan submitted"
@@ -61,8 +86,10 @@ STRICT EXCLUSIONS:
 - NO highway, road, bridge, or paving projects
 - NO wastewater, sewer, or external-only utility projects
 - NO DelDOT infrastructure
-- NO projects already under construction or completed
+- NO projects already under construction (check for "construction began", "groundbreaking held", "workers on site")
+- NO projects completed or nearly complete
 - NO projects currently out to bid
+- NO projects with construction start dates in the PAST (before January 2026)
 
 FOCUS ON: Buildings requiring interior finishes and flooring:
 - Office buildings
@@ -84,8 +111,9 @@ For each project, return a JSON object with these fields:
   "source_url": "REQUIRED - Direct URL to news article, planning doc, or announcement",
   "designer": "Architectural/engineering firm name or 'Design RFP pending'",
   "general_contractor": "GC name or 'Pre-bid phase - TBD'",
-  "project_stage": "Planning Approval|Design Phase|Permits Pending|Pre-Construction",
-  "timeline": "When construction expected to start",
+  "project_stage": "Planning Approval|Design Phase|Permits Pending|Pre-Construction|Design RFP",
+  "construction_status": "Not Started - Construction begins [date]",
+  "timeline": "When construction expected to start (must be FUTURE date)",
   "deadline": "Estimated completion date",
   "latitude": 39.xxxx,
   "longitude": -75.xxxx,
@@ -102,6 +130,7 @@ Return ONLY a JSON array of objects. Each project MUST have:
 1. A real, verifiable source_url from your web search
 2. Current pre-bid status (not already under construction)
 3. Relevance to interior flooring installation
+4. ARCHITECT/DESIGNER INFORMATION - Make extra effort to find this. If absolutely not available after thorough searching, mark as "Seeking architect - Design RFP stage"
 
 JSON format:
 [
@@ -140,25 +169,64 @@ JSON format:
         
         # Validation: Check for real URLs and pre-bid status
         validated_leads = []
+        rejected_count = 0
+        
         for i, lead in enumerate(leads, 1):
             # Check for required fields
             if not lead.get('source_url') or not lead['source_url'].startswith('http'):
                 print(f"⚠️  Project {i}: Skipping '{lead.get('name', 'Unknown')}' - No valid source URL")
+                rejected_count += 1
                 continue
             
             if not lead.get('name'):
                 print(f"⚠️  Project {i}: Skipping - Missing project name")
+                rejected_count += 1
                 continue
-                
-            # Warn if project might be too late stage
+            
+            # CRITICAL: Check if construction already started
+            description = lead.get('description', '').lower()
             stage = lead.get('project_stage', '').lower()
-            if 'construction' in stage and 'pre-construction' not in stage:
-                print(f"⚠️  Project {i}: '{lead.get('name')}' might be too late stage: {lead.get('project_stage')}")
+            construction_status = lead.get('construction_status', '').lower()
+            timeline = lead.get('timeline', '').lower()
+            
+            # Red flag keywords that indicate construction has started
+            started_keywords = [
+                'under construction', 'construction began', 'groundbreaking held',
+                'workers on site', 'framing complete', 'topped out', 'nearing completion',
+                'construction started', 'breaking ground', 'broke ground', 'construction underway',
+                'currently being built', 'construction is ongoing', 'opened in 20'
+            ]
+            
+            # Check if any red flag appears
+            is_already_started = any(keyword in description or keyword in construction_status or keyword in timeline 
+                                     for keyword in started_keywords)
+            
+            if is_already_started:
+                print(f"🚫 Project {i}: REJECTED '{lead.get('name')}' - Construction already started")
+                print(f"   Evidence: {description[:100]}...")
+                rejected_count += 1
+                continue
+            
+            # Warn if stage is "construction" without "pre-"
+            if 'construction' in stage and 'pre-construction' not in stage and 'pre construction' not in stage:
+                print(f"🚫 Project {i}: REJECTED '{lead.get('name')}' - Stage indicates active construction: {lead.get('project_stage')}")
+                rejected_count += 1
+                continue
+            
+            # Check for architect/designer information
+            designer = lead.get('designer', '')
+            if not designer or designer in ['TBD', 'N/A', '']:
+                print(f"⚠️  Project {i}: '{lead.get('name')}' - Missing architect/designer info")
+            else:
+                print(f"🏗️  Project {i}: Architect: {designer}")
             
             validated_leads.append(lead)
-            print(f"✓ Project {i}: {lead.get('name')} - {lead.get('project_stage', 'Unknown stage')}")
+            print(f"✅ Project {i}: {lead.get('name')} - {lead.get('project_stage', 'Unknown stage')}")
         
-        print(f"\n✅ Found {len(validated_leads)} validated early-stage projects with real sources")
+        if rejected_count > 0:
+            print(f"\n⚠️  Rejected {rejected_count} projects (already under construction or invalid)")
+        
+        print(f"\n✅ Found {len(validated_leads)} validated PRE-BID projects with real sources")
         return validated_leads
         
     except json.JSONDecodeError as e:
@@ -228,4 +296,3 @@ if __name__ == "__main__":
         print("  • Check if xAI API key has web search permissions")
         print("  • Try broadening search to include more Delaware counties")
         print("  • Adjust date ranges in search queries")
-
