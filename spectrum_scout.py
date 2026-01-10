@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import requests
 from xai_sdk import Client
 from xai_sdk.chat import user, system
@@ -163,6 +164,10 @@ JSON format:
             raw_content = "\n".join(lines[1:-1])
             if raw_content.startswith("json"):
                 raw_content = raw_content[4:].strip()
+        
+        # Fix common JSON formatting issues from AI responses
+        # Remove trailing commas before closing braces/brackets
+        raw_content = re.sub(r',(\s*[}\]])', r'\1', raw_content)
         
         # Parse JSON
         leads = json.loads(raw_content)
