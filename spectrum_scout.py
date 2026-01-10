@@ -175,6 +175,7 @@ JSON format:
         # Validation: Check for real URLs and pre-bid status
         validated_leads = []
         rejected_count = 0
+        seen_addresses = {}  # Track addresses to detect duplicates
         
         for i, lead in enumerate(leads, 1):
             # Check for required fields
@@ -187,6 +188,22 @@ JSON format:
                 print(f"⚠️  Project {i}: Skipping - Missing project name")
                 rejected_count += 1
                 continue
+            
+            # DUPLICATE CHECK: Check if we've seen this address before
+            address = lead.get('address', '').lower().strip()
+            if address and address != 'site location tbd' and address != 'site tbd':
+                # Normalize address for comparison (remove extra spaces, punctuation)
+                normalized_address = re.sub(r'[^\w\s]', '', address).strip()
+                normalized_address = re.sub(r'\s+', ' ', normalized_address)  # Collapse multiple spaces
+                
+                if normalized_address in seen_addresses:
+                    existing_name = seen_addresses[normalized_address]
+                    print(f"🔄 Project {i}: DUPLICATE '{lead.get('name')}' - Same address as '{existing_name}'")
+                    print(f"   Address: {address}")
+                    rejected_count += 1
+                    continue
+                
+                seen_addresses[normalized_address] = lead.get('name')
             
             # CRITICAL: Check if construction already started
             description = lead.get('description', '').lower()
@@ -229,7 +246,7 @@ JSON format:
             print(f"✅ Project {i}: {lead.get('name')} - {lead.get('project_stage', 'Unknown stage')}")
         
         if rejected_count > 0:
-            print(f"\n⚠️  Rejected {rejected_count} projects (already under construction or invalid)")
+            print(f"\n⚠️  Rejected {rejected_count} projects (duplicates, already under construction, or invalid)")
         
         print(f"\n✅ Found {len(validated_leads)} validated PRE-BID projects with real sources")
         return validated_leads
