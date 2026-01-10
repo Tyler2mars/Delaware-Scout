@@ -1,15 +1,15 @@
-name: Monday & Thursday Project Scout
+name: Monday Morning Project Scout
 on:
   workflow_dispatch: 
   schedule:
-    # 7:00 AM EST (12:00 PM UTC) on Mon (1) and Thu (4)
-    - cron: '0 12 * * 1,4'
-
+    # 7:00 AM EST (12:00 PM UTC) on Monday only
+    - cron: '0 12 * * 1'
+    
 # This prevents multiple runs from stacking up if one gets stuck
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
+  
 jobs:
   scrape:
     runs-on: ubuntu-latest
