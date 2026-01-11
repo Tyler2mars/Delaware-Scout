@@ -14,42 +14,104 @@ WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 def get_delaware_news():
-    print("Step 1: Fetching Delaware construction news from RSS...")
-    # Search query: "Delaware construction" OR "Delaware development"
-    rss_url = "https://news.google.com/rss/search?q=Delaware+construction+development+when:7d&hl=en-US&gl=US&ceid=US:en"
-    feed = feedparser.parse(rss_url)
+    print("Step 1: Fetching Delaware construction news from multiple sources...")
     
-    articles = []
-    for entry in feed.entries[:15]: # Limit to top 15 recent stories
-        articles.append({
-            "title": entry.title,
-            "link": entry.link,
-            "published": entry.published
-        })
-    return articles
+    # Multiple search queries to catch different types of projects
+    rss_sources = [
+        # General construction
+        "https://news.google.com/rss/search?q=Delaware+construction+development+when:7d&hl=en-US&gl=US&ceid=US:en",
+        
+        # Specific project types
+        "https://news.google.com/rss/search?q=Delaware+hospital+medical+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=Delaware+apartment+multifamily+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=Delaware+office+building+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=Delaware+school+university+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=Delaware+hotel+hospitality+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=Delaware+retail+shopping+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
+        
+        # Major Delaware cities
+        "https://news.google.com/rss/search?q=Wilmington+Delaware+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=Dover+Delaware+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=Newark+Delaware+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=Rehoboth+Beach+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
+        
+        # Commercial real estate terms
+        "https://news.google.com/rss/search?q=Delaware+renovation+remodel+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=Delaware+commercial+real+estate+when:7d&hl=en-US&gl=US&ceid=US:en",
+    ]
+    
+    all_articles = []
+    seen_urls = set()
+    
+    for rss_url in rss_sources:
+        try:
+            feed = feedparser.parse(rss_url)
+            for entry in feed.entries[:10]:  # Top 10 from each source
+                # Deduplicate by URL
+                if entry.link not in seen_urls:
+                    seen_urls.add(entry.link)
+                    all_articles.append({
+                        "title": entry.title,
+                        "link": entry.link,
+                        "published": entry.published
+                    })
+        except Exception as e:
+            print(f"Error fetching from {rss_url[:50]}...: {e}")
+            continue
+    
+    print(f"Found {len(all_articles)} unique articles from {len(rss_sources)} sources")
+    return all_articles
 
 def analyze_news_with_grok(articles):
     print("Step 2: Asking Grok to filter for relevant project news...")
     
-    # Updated prompt to ensure proper format
+    # Updated prompt to ensure proper format and extract more details
     prompt = f"""
     Analyze the following list of news headlines. 
-    1. Filter out anything NOT related to building construction (skip road/highway paving).
-    2. For relevant articles, categorize them into EXACTLY ONE of these sectors: Healthcare, Government, Corporate, Education, Multi Family, Hospitality, Senior Living, or Retail.
-    3. Return ONLY a valid JSON array with this exact structure:
+    
+    FILTERING RULES:
+    1. INCLUDE: Building construction, renovations, tenant improvements, new facilities
+    2. EXCLUDE: Road/highway paving, bridge construction, infrastructure (unless it includes a building)
+    3. EXCLUDE: Articles just about financing, sales, or leasing (unless construction is mentioned)
+    
+    CATEGORIZATION:
+    Categorize into EXACTLY ONE sector: Healthcare, Government, Corporate, Education, Multi Family, Hospitality, Senior Living, or Retail.
+    
+    EXTRACTION REQUIREMENTS:
+    For each relevant article, extract:
+    - title: Article headline
+    - source_url: Full URL
+    - sector: One of the exact sector names above
+    - summary: 2-3 sentence summary including project details
+    - location: Specific city/area in Delaware (e.g., "Wilmington", "Dover", "Newark")
+    - estimated_sq_ft: Square footage if mentioned (number only, or null)
+    - project_value: Dollar value if mentioned (number only, or null)
+    - developer: Developer/owner name if mentioned (or null)
+    - contractor: General contractor if mentioned (or null)
+    - project_phase: "Planning", "Permitting", "Under Construction", or "Completed" (best guess)
+    - opportunity_score: Rate 1-10 based on: size (bigger=higher), detail level (more detail=higher), timeline urgency (sooner=higher)
+    
+    Return ONLY a valid JSON array with this exact structure:
     [
       {{
-        "title": "Article title here",
-        "source_url": "Full URL here",
-        "sector": "One of the exact sector names listed above",
-        "summary": "Brief summary of the project"
+        "title": "Article title",
+        "source_url": "Full URL",
+        "sector": "Healthcare",
+        "summary": "Detailed summary with key facts",
+        "location": "Wilmington",
+        "estimated_sq_ft": 50000,
+        "project_value": 15000000,
+        "developer": "ABC Development Corp",
+        "contractor": "XYZ Construction",
+        "project_phase": "Under Construction",
+        "opportunity_score": 8
       }}
     ]
     
-    IMPORTANT: 
-    - Use EXACT sector names (case-sensitive): Healthcare, Government, Corporate, Education, Multi Family, Hospitality, Senior Living, or Retail
-    - source_url must be the complete URL from the article
+    CRITICAL: 
+    - Use EXACT sector names (case-sensitive)
     - Return ONLY the JSON array, no explanatory text
+    - Use null for fields you can't extract
     
     Headlines:
     {json.dumps(articles, indent=2)}
@@ -97,12 +159,23 @@ def analyze_news_with_grok(articles):
             if "summary" not in item or not item["summary"]:
                 item["summary"] = item["title"]
             
-            cleaned_items.append({
+            # Build cleaned item with all fields
+            cleaned_item = {
                 "title": str(item["title"]).strip(),
                 "source_url": str(item["source_url"]).strip(),
                 "sector": str(item["sector"]).strip(),
-                "summary": str(item["summary"]).strip()
-            })
+                "summary": str(item["summary"]).strip(),
+            }
+            
+            # Add optional fields if they exist and aren't null
+            optional_fields = ["location", "estimated_sq_ft", "project_value", 
+                             "developer", "contractor", "project_phase", "opportunity_score"]
+            
+            for field in optional_fields:
+                if field in item and item[field] is not None and item[field] != "null":
+                    cleaned_item[field] = item[field]
+            
+            cleaned_items.append(cleaned_item)
         
         print(f"Successfully parsed {len(cleaned_items)} valid news items")
         return cleaned_items
