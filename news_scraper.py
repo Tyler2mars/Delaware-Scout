@@ -123,8 +123,7 @@ def send_to_lovable(news_items):
     print(f"Step 3: Sending {len(news_items)} news items to Lovable...")
     
     headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
+        "Content-Type": "application/json"
     }
     
     payload = {"news": news_items}
