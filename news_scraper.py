@@ -57,7 +57,7 @@ def analyze_news_with_grok(articles):
     
     try:
         response = client.chat.completions.create(
-            model="grok-beta",
+            model="grok-4-1-fast-non-reasoning",
             messages=[
                 {"role": "system", "content": "You are a construction analyst. Return valid JSON only with no markdown formatting."},
                 {"role": "user", "content": prompt}
