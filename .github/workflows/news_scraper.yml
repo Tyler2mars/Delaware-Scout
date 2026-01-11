@@ -1,11 +1,9 @@
 name: Delaware News Scraper
-
 on:
   schedule:
     # Runs at 7:00 AM EST (12:00 PM UTC) on Monday and Thursday
     - cron: '0 12 * * 1,4'
   workflow_dispatch: # Allows manual testing
-
 jobs:
   scrape-news:
     runs-on: ubuntu-latest
@@ -19,6 +17,6 @@ jobs:
       - name: Run News Scraper
         env:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          SUPABASE_WEBHOOK_URL: ${{ secrets.SUPABASE_WEBHOOK_URL }}
+          SUPABASE_WEBHOOK_URL: ${{ secrets.SUPABASE_NEWS_WEBHOOK_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: python news_scraper.py
