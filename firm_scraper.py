@@ -11,13 +11,13 @@ client = OpenAI(
 
 # Configuration for Lovable/Supabase
 # Your existing secrets will work for this too
-WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
+WEBHOOK_URL = os.environ.get("FIRM_WEBHOOK_URL")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 def get_firms():
     print("Step 1: Searching for Delaware Architect & Design firms...")
     
-    prompt = """Find 20 established Architecture and Interior Design firms physically located in Delaware.
+    prompt = """Find 10 established Architecture and Interior Design firms physically located in Delaware.
     Return ONLY a JSON list of objects.
     
     Each object MUST have:
