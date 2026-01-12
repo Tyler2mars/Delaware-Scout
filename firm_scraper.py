@@ -1,165 +1,116 @@
 import os
 import json
-import re
 import requests
-from xai_sdk import Client
-from xai_sdk.chat import user, system
-from xai_sdk.tools import web_search
+from openai import OpenAI
 
-# Setup xAI Client
-client = Client(api_key=os.environ.get("XAI_API_KEY"))
+# 1. Setup xAI Client
+# This uses the Grok-4 model which has built-in web search capabilities
+client = OpenAI(
+    api_key=os.environ.get("XAI_API_KEY"),
+    base_url="https://api.x.ai/v1",
+)
 
+# 2. Configuration - Mapping to your GitHub Action Environment Variables
+# These must match the names on the LEFT side of your .yml 'env' section
 WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 def get_firms():
-    print("Step 1: Searching web for Delaware Architecture & Design firms...\n")
+    """
+    Asks Grok to research and verify 10 Delaware A&D firms using live web data.
+    """
+    print("Step 1: Asking Grok to browse and verify 10 Delaware A&D Firms...")
     
-    system_prompt = """You are a business directory specialist with web search capabilities.
+    prompt = """Search the web to identify 10 real, active Architecture and Interior Design firms 
+    with physical commercial offices in Delaware. 
 
-Search Strategy:
-1. Search AIA Delaware chapter member directories
-2. Search Google for architecture and design firms
-3. Check professional associations
-4. Verify firms have active websites and Delaware addresses
+    CRITICAL INSTRUCTIONS:
+    1. Only include firms with a verifiable website and a physical DE address.
+    2. Focus on firms that handle Vertical Construction (Commercial, Healthcare, Education, or Multi-Family).
+    3. If a firm is purely residential or 'work-from-home' without a commercial studio, skip it.
+    4. Verify the phone numbers and cities (Wilmington, Newark, Dover, Lewes, etc.).
 
-Always verify information with real sources and include URLs.
-Return ONLY valid JSON - no introductory text."""
-
-    user_prompt = """Find 10 REAL Architecture and Interior Design firms currently operating in Delaware.
-
-SEARCH QUERIES TO RUN:
-1. "AIA Delaware member architects"
-2. "architecture firms Wilmington Delaware"
-3. "interior design firms Newark Delaware"
-4. "Delaware registered architects 2025"
-
-VERIFICATION:
-- Must have working website
-- Must be in Delaware
-- Must show recent activity (2024-2026)
-
-Return JSON array:
-[
-  {
-    "name": "Legal business name",
-    "address": "Full street address",
-    "city": "Delaware city",
-    "state": "DE",
-    "website": "Full URL (must be real)",
-    "phone": "Phone number or null",
-    "contact_email": "Email or null",
-    "specialties": ["Commercial", "Residential", etc.],
-    "description": "2-3 sentence description",
-    "source_url": "Where you found this info",
-    "last_verified": "January 11, 2026"
-  }
-]
-
-CRITICAL: Only include firms found through web search with real websites."""
+    Return exactly 10 high-confidence results as a JSON list.
+    
+    Data structure for each object:
+    - name: Legal business name
+    - address: Full street address
+    - city: Delaware city
+    - website: Official URL
+    - phone: Business phone number
+    - contact_email: General email if found
+    - specialties: List of strings (e.g. ["Commercial", "Institutional", "Interior Design"])
+    - description: A concise 1-2 sentence summary of their notable Delaware projects or design focus.
+    
+    Return ONLY the JSON list. Do not include any introductory or concluding text.
+    """
 
     try:
-        # Create chat with web search enabled
-        chat = client.chat.create(
-            model="grok-4-1-fast",
-            tools=[web_search()],  # Enable real-time web search
+        response = client.chat.completions.create(
+            model="grok-4-1-fast-non-reasoning", 
+            messages=[
+                {"role": "system", "content": "You are a precise business data auditor. You verify web data before returning it. You never hallucinate business names or URLs. Return valid JSON only."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1 # Low temperature for maximum factual accuracy
         )
         
-        chat.append(system(system_prompt))
-        chat.append(user(user_prompt))
+        raw_content = response.choices[0].message.content.strip()
         
-        print("🔍 Grok is searching the web for real firms...")
-        response = chat.sample()
-        
-        raw_content = response.content.strip()
-        print(f"📄 Received response ({len(raw_content)} characters)\n")
-        
-        # Clean markdown formatting
+        # Clean AI markdown markers if present
         if raw_content.startswith("```"):
-            lines = raw_content.split("\n")
-            raw_content = "\n".join(lines[1:-1])
+            raw_content = raw_content.split("\n", 1)[1].rsplit("\n", 1)[0].strip()
             if raw_content.startswith("json"):
                 raw_content = raw_content[4:].strip()
-        
-        # Fix trailing commas
-        raw_content = re.sub(r',(\s*[}\]])', r'\1', raw_content)
-        
-        # Parse JSON
+
         firms = json.loads(raw_content)
-        
-        # Validate
-        validated_firms = []
-        for i, firm in enumerate(firms, 1):
-            if not firm.get('website') or not firm['website'].startswith('http'):
-                print(f"⚠️  Firm {i}: Skipping '{firm.get('name', 'Unknown')}' - No valid website")
-                continue
-            
-            if not firm.get('name') or not firm.get('city'):
-                print(f"⚠️  Firm {i}: Skipping - Missing name or city")
-                continue
-            
-            validated_firms.append(firm)
-            print(f"✅ Firm {i}: {firm.get('name')}")
-            print(f"   📍 {firm.get('city')}, DE")
-            print(f"   🌐 {firm.get('website')}")
-            print(f"   📚 Source: {firm.get('source_url', 'N/A')[:50]}...")
-            print()
-        
-        print(f"✅ Found {len(validated_firms)} verified firms\n")
-        return validated_firms
-        
-    except json.JSONDecodeError as e:
-        print(f"❌ JSON parsing error: {e}")
-        print(f"Response: {raw_content[:500]}...")
-        return []
+        print(f"Successfully verified {len(firms)} firms.")
+        return firms
+
     except Exception as e:
-        print(f"❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"ERROR during AI search/parsing: {e}")
         return []
 
 def send_to_supabase(firms):
+    """
+    Sends the extracted JSON data to the Lovable/Supabase Edge Function.
+    """
     if not firms:
-        print("⚠️  No firms to send.\n")
+        print("No firms found to send. Skipping Supabase update.")
         return
-    
-    print(f"Step 2: Sending {len(firms)} firms to Supabase...\n")
+
+    # Safety Check: Ensure the URL exists
+    if not WEBHOOK_URL:
+        print("CRITICAL ERROR: SUPABASE_WEBHOOK_URL is None. Check GitHub Secrets!")
+        return
+
+    print(f"Step 2: Sending {len(firms)} firms to Lovable Webhook...")
     
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
     }
     
+    # We send it with a 'firms' key so your specific scrape-firms function can handle it
+    payload = {"firms": firms} 
+    
     try:
         response = requests.post(
-            WEBHOOK_URL,
-            headers=headers,
-            json={"firms": firms},
+            WEBHOOK_URL, 
+            headers=headers, 
+            json=payload, 
             timeout=30
         )
         
         if response.status_code == 200:
-            print("✅ SUCCESS: Firms uploaded\n")
-            for i, firm in enumerate(firms, 1):
-                print(f"  {i}. {firm.get('name')} - {firm.get('city')}")
+            print("✓ SUCCESS: Firms successfully added to the design_firms table.")
         else:
-            print(f"❌ FAILED: {response.status_code}")
-            print(f"Response: {response.text}")
+            print(f"✗ FAILED: Status {response.status_code} - {response.text}")
+
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"ERROR connecting to Lovable: {e}")
 
 if __name__ == "__main__":
-    print("="*60)
-    print("Delaware Architecture & Design Firm Finder")
-    print("Using Grok Web Search")
-    print("="*60 + "\n")
-    
+    # Execute the workflow
     found_firms = get_firms()
-    
-    if found_firms:
-        print("="*60)
-        print(f"🎯 Total: {len(found_firms)} verified firms")
-        print("="*60 + "\n")
-        send_to_supabase(found_firms)
-    else:
-        print("⚠️  No firms found")
+    send_to_supabase(found_firms)
