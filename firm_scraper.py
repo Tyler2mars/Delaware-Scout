@@ -11,10 +11,11 @@ from xai_sdk.tools import web_search
 client = Client(api_key=os.environ.get("XAI_API_KEY"))
 
 # 2. Configuration
-WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL") 
+WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
-# IMPORTANT: Set your actual table name here
-TABLE_NAME = "architect_firms" 
+
+# Set to your verified table name
+TABLE_NAME = "design_firms" 
 
 def get_firms():
     cities = ["Wilmington, DE", "Dover, DE", "Lewes and Bethany Beach, DE", "Newark, DE"]
@@ -23,13 +24,12 @@ def get_firms():
     print(f"🚀 Starting Delaware A&D Firm Scout")
 
     for city in cities:
-        if len(all_verified_firms) >= 15: # Aim for a slightly larger pool before filtering
+        if len(all_verified_firms) >= 15:
             break
             
         print(f"🔍 Searching for firms in {city}...")
-        
-        system_prompt = "You are a business research agent. Find active Architecture and Interior Design firms with physical studios in Delaware. Return ONLY valid JSON."
-        user_prompt = f"Find 5 unique Architecture or Interior Design firms with physical offices in {city}. Return a JSON array with 'name', 'address', 'city', 'state', 'website'."
+        system_prompt = "You are a research agent. Find Architecture and Interior Design firms with physical studios in Delaware."
+        user_prompt = f"Find 5 unique Architecture or Interior Design firms in {city}. Return ONLY a JSON array with name, address, city, state, website."
 
         try:
             chat = client.chat.create(model="grok-4-1-fast", tools=[web_search()])
@@ -44,24 +44,21 @@ def get_firms():
                 batch = json.loads(re.sub(r',(\s*[}\]])', r'\1', json_match.group(0)))
                 for firm in batch:
                     addr = firm.get('address', '').upper()
-                    if ("DE" in addr or "DELAWARE" in addr):
+                    if "DE" in addr or "DELAWARE" in addr:
                         all_verified_firms.append(firm)
-            
             time.sleep(1) 
         except Exception as e:
-            print(f"  ⚠️ Error in {city}: {e}")
+            print(f"  ⚠️ Search Error in {city}: {e}")
             continue
 
     return all_verified_firms
 
 def check_for_duplicates(firms):
-    """Checks each firm against the Supabase REST API to see if it already exists."""
+    """Checks the 'design_firms' table for existing website URLs."""
     if not firms:
         return []
 
-    # Construct the REST URL from your Webhook URL
-    # Webhook: https://project.supabase.co/functions/v1/webhook
-    # REST:    https://project.supabase.co/rest/v1/table_name
+    # Strip webhook URL to find the REST base URL
     project_url = WEBHOOK_URL.split('/functions/v1/')[0]
     rest_url = f"{project_url}/rest/v1/{TABLE_NAME}"
     
@@ -72,7 +69,7 @@ def check_for_duplicates(firms):
     }
 
     new_firms = []
-    print(f"🔎 Filtering {len(firms)} found firms against Supabase records...")
+    print(f"🔎 Filtering {len(firms)} found firms against table: '{TABLE_NAME}'")
 
     for firm in firms:
         website = firm.get('website')
@@ -80,7 +77,7 @@ def check_for_duplicates(firms):
             continue
             
         try:
-            # Query: "Select where website equals the current firm's website"
+            # Check if this website exists using Supabase eq filter
             query_url = f"{rest_url}?website=eq.{website}&select=website"
             response = requests.get(query_url, headers=headers)
             
@@ -88,3 +85,27 @@ def check_for_duplicates(firms):
                 existing_data = response.json()
                 if len(existing_data) == 0:
                     new_firms.append(firm)
+                else:
+                    print(f"  ⏭️ Already in database: {firm['name']}")
+            else:
+                # If checking fails, we include it to be safe
+                print(f"  ⚠️ API {response.status_code} check failed for {firm['name']}. Adding anyway.")
+                new_firms.append(firm)
+        except Exception as e:
+            # THIS IS THE FIXED EXCEPT BLOCK THAT WAS MISSING
+            print(f"  ❌ Error verifying {firm['name']}: {e}")
+            new_firms.append(firm)
+
+    return new_firms
+
+def send_to_supabase(firms):
+    if not firms:
+        print("✨ No new firms to upload.")
+        return
+        
+    print(f"🚀 Uploading {len(firms)} NEW firms to Supabase...")
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {SUPABASE_ANON_KEY}"}
+    
+    try:
+        r = requests.post(WEBHOOK_URL, headers=headers, json={"firms": firms}, timeout=30)
+        if r.status_
