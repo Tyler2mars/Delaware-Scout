@@ -1,19 +1,31 @@
 name: Delaware News Scraper
+
 on:
   schedule:
-    # Runs at 7:00 AM EST (12:00 PM UTC) on Monday and Thursday
-    - cron: '0 12 * * 1,4'
+    # 7:00 AM EST is 12:00 PM UTC.
+    # '1,2,4' means Monday (1), Tuesday (2), and Thursday (4).
+    - cron: '0 12 * * 1,2,4'
+    
   workflow_dispatch: # Allows manual testing
+
 jobs:
   scrape-news:
     runs-on: ubuntu-latest
+    # Safety timeout to prevent runaway runs
+    timeout-minutes: 10
+    
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          
       - name: Install Dependencies
-        run: pip install requests openai feedparser
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests openai feedparser
+          
       - name: Run News Scraper
         env:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
