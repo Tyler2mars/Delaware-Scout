@@ -25,6 +25,6 @@ jobs:
       - name: Run Firm Scraper
         env:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          SUPABASE_WEBHOOK_URL: ${{ secrets.SUPABASE_WEBHOOK_URL }}
+          SUPABASE_WEBHOOK_URL: ${{ secrets.FIRM_WEBHOOK_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: python firm_scraper.py
