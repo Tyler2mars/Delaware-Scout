@@ -1,83 +1,100 @@
 import os
 import json
 import requests
-from openai import OpenAI
+import re
+from xai_sdk import Client
+from xai_sdk.chat import user, system
+from xai_sdk.tools import web_search
 
-# 1. Setup Client (OpenAI-compatible)
-client = OpenAI(
-    api_key=os.environ.get("XAI_API_KEY"),
-    base_url="https://api.x.ai/v1",
-)
+# 1. Setup xAI Client (Native SDK)
+client = Client(api_key=os.environ.get("XAI_API_KEY"))
 
 WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 def get_firms():
-    print("🔍 Searching for Delaware A&D firms using Grok 4.1 Fast...")
+    print("🔍 Step 1: Searching for Delaware A&D Firms using Agentic Search...")
     
-    # We use 'grok-4-1-fast-non-reasoning' (standard API ID as of Jan 2026)
-    # The 'non-reasoning' version is optimized for fast web extraction.
-    model_id = "grok-4-1-fast-non-reasoning"
+    system_prompt = """You are a specialized business researcher. Your goal is to find 10 Architecture or Interior Design firms with physical headquarters or studio offices located in Delaware.
 
-    prompt = """Find 10 REAL Architecture and Interior Design firms with physical offices IN Delaware.
+STRICT VERIFICATION RULES:
+1. ONLY include firms with a physical street address in DE.
+2. REJECT "Virtual Offices" or firms that just have a "Project Office" but are based in PA/MD/NJ.
+3. Use your web_search tool to verify the office address on the firm's own 'Contact' page.
+"""
 
-    STRICT FILTERS:
-    1. ONLY include firms with a physical street address in DE.
-    2. REJECT firms that only do 'projects' in DE but are based in PA, MD, or NJ.
-    3. Include name, address, city, state (DE), website, and specialties.
+    user_prompt = """Find 10 REAL Architecture and Interior Design firms with physical offices in Delaware. 
     
-    Return a valid JSON list. No preamble or conversational text."""
+    Run multiple searches to confirm:
+    1. The firm's name and Delaware street address.
+    2. That they are currently active in 2026.
+    
+    Return ONLY a JSON array of objects:
+    [
+      {
+        "name": "Firm Name",
+        "address": "Full DE Street Address",
+        "city": "City",
+        "state": "DE",
+        "website": "URL",
+        "verification_note": "Confirmed DE studio via [Source]"
+      }
+    ]"""
 
     try:
-        response = client.chat.completions.create(
-            model=model_id,
-            messages=[
-                {"role": "system", "content": "You are a data extraction specialist. Return JSON only."},
-                {"role": "user", "content": prompt}
-            ],
-            # Triggering live web search via xAI's specific parameter
-            extra_body={"search_parameters": {"mode": "on"}},
-            temperature=0.1
+        # Create chat with AGENTIC web search enabled (Grok 4.1 Fast)
+        chat = client.chat.create(
+            model="grok-4-1-fast",
+            tools=[web_search()],
         )
         
-        raw_content = response.choices[0].message.content.strip()
+        chat.append(system(system_prompt))
+        chat.append(user(user_prompt))
         
-        # Clean up any potential markdown formatting from the response
+        print("🌐 Grok is browsing the web and verifying DE addresses...")
+        response = chat.sample()
+        raw_content = response.content.strip()
+
+        # Clean JSON formatting
         if "```json" in raw_content:
             raw_content = raw_content.split("```json")[1].split("```")[0].strip()
         elif "```" in raw_content:
             raw_content = raw_content.split("```")[1].split("```")[0].strip()
-
+        
+        # Final JSON cleanup for trailing commas
+        raw_content = re.sub(r',(\s*[}\]])', r'\1', raw_content)
+        
         firms = json.loads(raw_content)
         
-        # Verification layer: Ensure address mentions Delaware
+        # Final Python-level check to ensure 'DE' is in the address
         verified = [f for f in firms if "DE" in f.get('address', '').upper() or "DELAWARE" in f.get('address', '').upper()]
         
         print(f"✅ Found {len(verified)} verified Delaware firms.")
         return verified
 
     except Exception as e:
-        print(f"❌ Error during scrape: {e}")
+        print(f"❌ Error during Agentic Scrape: {e}")
         return []
 
 def send_to_supabase(firms):
     if not firms:
-        print("⚠️ No firms to upload.")
+        print("⚠️ No data to upload.")
         return
         
+    print(f"🚀 Step 2: Uploading {len(firms)} firms to Supabase...")
     headers = {
-        "Content-Type": "application/json",
+        "Content-Type": "application/json", 
         "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
     }
     
     try:
         r = requests.post(WEBHOOK_URL, headers=headers, json={"firms": firms}, timeout=30)
         if r.status_code == 200:
-            print("🚀 Successfully sent data to Supabase.")
+            print("✓ Successfully sent to Supabase.")
         else:
-            print(f"Failed to send data: {r.status_code} - {r.text}")
+            print(f"✗ Failed: {r.status_code} - {r.text}")
     except Exception as e:
-        print(f"Upload error: {e}")
+        print(f"❌ Upload Error: {e}")
 
 if __name__ == "__main__":
     firms_list = get_firms()
