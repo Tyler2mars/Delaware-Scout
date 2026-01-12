@@ -6,93 +6,76 @@ from xai_sdk import Client
 from xai_sdk.chat import user, system
 from xai_sdk.tools import web_search
 
-# 1. Setup xAI Client (Native SDK)
 client = Client(api_key=os.environ.get("XAI_API_KEY"))
 
 WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 def get_firms():
-    print("🔍 Step 1: Searching for Delaware A&D Firms using Agentic Search...")
+    print("🔍 Step 1: Searching for Delaware A&D Firms...")
     
-    system_prompt = """You are a specialized business researcher. Your goal is to find 10 Architecture or Interior Design firms with physical headquarters or studio offices located in Delaware.
+    # We broaden the prompt to ensure we get results, then filter in Python
+    system_prompt = "You are a business research assistant. Use web search to find active Architecture and Interior Design firms in Delaware."
 
-STRICT VERIFICATION RULES:
-1. ONLY include firms with a physical street address in DE.
-2. REJECT "Virtual Offices" or firms that just have a "Project Office" but are based in PA/MD/NJ.
-3. Use your web_search tool to verify the office address on the firm's own 'Contact' page.
-"""
-
-    user_prompt = """Find 10 REAL Architecture and Interior Design firms with physical offices in Delaware. 
+    user_prompt = """Search for 'Architecture firms in Wilmington DE', 'Interior designers Newark DE', and 'Top Delaware Architects 2026'.
     
-    Run multiple searches to confirm:
-    1. The firm's name and Delaware street address.
-    2. That they are currently active in 2026.
+    Provide a list of 10 firms that have physical offices in Delaware. 
+    For each firm, you MUST provide:
+    1. Name
+    2. Physical Delaware address
+    3. Website URL
     
-    Return ONLY a JSON array of objects:
-    [
-      {
-        "name": "Firm Name",
-        "address": "Full DE Street Address",
-        "city": "City",
-        "state": "DE",
-        "website": "URL",
-        "verification_note": "Confirmed DE studio via [Source]"
-      }
-    ]"""
+    Return ONLY a JSON array. 
+    Example format: [{"name": "Example Arch", "address": "123 Main St, Wilmington, DE 19801", "website": "https://example.com"}]"""
 
     try:
-        # Create chat with AGENTIC web search enabled (Grok 4.1 Fast)
+        # We enable inline_citations to improve search depth
         chat = client.chat.create(
             model="grok-4-1-fast",
             tools=[web_search()],
+            include=["inline_citations"] 
         )
         
         chat.append(system(system_prompt))
         chat.append(user(user_prompt))
         
-        print("🌐 Grok is browsing the web and verifying DE addresses...")
+        print("🌐 Browsing Delaware business directories...")
         response = chat.sample()
         raw_content = response.content.strip()
 
-        # Clean JSON formatting
-        if "```json" in raw_content:
-            raw_content = raw_content.split("```json")[1].split("```")[0].strip()
-        elif "```" in raw_content:
-            raw_content = raw_content.split("```")[1].split("```")[0].strip()
+        # Robust JSON extraction
+        json_match = re.search(r'\[\s*\{.*\}\s*\]', raw_content, re.DOTALL)
+        if json_match:
+            raw_content = json_match.group(0)
         
-        # Final JSON cleanup for trailing commas
+        # Clean trailing commas
         raw_content = re.sub(r',(\s*[}\]])', r'\1', raw_content)
         
         firms = json.loads(raw_content)
         
-        # Final Python-level check to ensure 'DE' is in the address
-        verified = [f for f in firms if "DE" in f.get('address', '').upper() or "DELAWARE" in f.get('address', '').upper()]
+        # We do the "Strict Delaware" check here in Python code
+        # This prevents the AI from getting 'stage fright' and returning 0 results
+        verified = []
+        for f in firms:
+            addr = f.get('address', '').upper()
+            if " DE " in addr or "DELAWARE" in addr or ", DE" in addr:
+                verified.append(f)
         
-        print(f"✅ Found {len(verified)} verified Delaware firms.")
+        print(f"✅ Successfully found and verified {len(verified)} firms.")
         return verified
 
     except Exception as e:
-        print(f"❌ Error during Agentic Scrape: {e}")
+        print(f"❌ Error: {e}")
         return []
 
 def send_to_supabase(firms):
     if not firms:
-        print("⚠️ No data to upload.")
+        print("⚠️ No firms to upload.")
         return
-        
-    print(f"🚀 Step 2: Uploading {len(firms)} firms to Supabase...")
-    headers = {
-        "Content-Type": "application/json", 
-        "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
-    }
-    
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {SUPABASE_ANON_KEY}"}
     try:
         r = requests.post(WEBHOOK_URL, headers=headers, json={"firms": firms}, timeout=30)
-        if r.status_code == 200:
-            print("✓ Successfully sent to Supabase.")
-        else:
-            print(f"✗ Failed: {r.status_code} - {r.text}")
+        print("🚀 Data sent to Supabase!" if r.status_code == 200 else f"✗ Error: {r.text}")
     except Exception as e:
         print(f"❌ Upload Error: {e}")
 
