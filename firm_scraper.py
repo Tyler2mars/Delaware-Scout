@@ -2,6 +2,7 @@ import os
 import json
 import requests
 import re
+import time
 from xai_sdk import Client
 from xai_sdk.chat import user, system
 from xai_sdk.tools import web_search
@@ -12,70 +13,78 @@ WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 def get_firms():
-    print("🔍 Step 1: Searching for Delaware A&D Firms...")
+    # We rotate through these cities to ensure we find real local offices
+    cities = ["Wilmington, DE", "Dover, DE", "Lewes and Bethany Beach, DE", "Newark, DE"]
+    all_verified_firms = []
     
-    # We broaden the prompt to ensure we get results, then filter in Python
-    system_prompt = "You are a business research assistant. Use web search to find active Architecture and Interior Design firms in Delaware."
+    print(f"🚀 Starting Delaware A&D Firm Scout (Target: 10 firms)")
 
-    user_prompt = """Search for 'Architecture firms in Wilmington DE', 'Interior designers Newark DE', and 'Top Delaware Architects 2026'.
-    
-    Provide a list of 10 firms that have physical offices in Delaware. 
-    For each firm, you MUST provide:
-    1. Name
-    2. Physical Delaware address
-    3. Website URL
-    
-    Return ONLY a JSON array. 
-    Example format: [{"name": "Example Arch", "address": "123 Main St, Wilmington, DE 19801", "website": "https://example.com"}]"""
+    for city in cities:
+        if len(all_verified_firms) >= 10:
+            break
+            
+        print(f"🔍 Searching for firms in {city}...")
+        
+        system_prompt = "You are a business research agent. Use web search to find active Architecture and Interior Design firms with physical studios in Delaware."
+        
+        user_prompt = f"""Find 5 unique Architecture or Interior Design firms with physical offices in {city}.
+        
+        STRICT: The office must be in Delaware.
+        Return ONLY a JSON array of objects:
+        [
+          {{
+            "name": "Firm Name",
+            "address": "Full DE Street Address",
+            "city": "{city.split(',')[0]}",
+            "state": "DE",
+            "website": "URL"
+          }}
+        ]"""
 
-    try:
-        # We enable inline_citations to improve search depth
-        chat = client.chat.create(
-            model="grok-4-1-fast",
-            tools=[web_search()],
-            include=["inline_citations"] 
-        )
-        
-        chat.append(system(system_prompt))
-        chat.append(user(user_prompt))
-        
-        print("🌐 Browsing Delaware business directories...")
-        response = chat.sample()
-        raw_content = response.content.strip()
+        try:
+            chat = client.chat.create(
+                model="grok-4-1-fast",
+                tools=[web_search()]
+            )
+            chat.append(system(system_prompt))
+            chat.append(user(user_prompt))
+            
+            response = chat.sample()
+            raw_content = response.content.strip()
 
-        # Robust JSON extraction
-        json_match = re.search(r'\[\s*\{.*\}\s*\]', raw_content, re.DOTALL)
-        if json_match:
-            raw_content = json_match.group(0)
-        
-        # Clean trailing commas
-        raw_content = re.sub(r',(\s*[}\]])', r'\1', raw_content)
-        
-        firms = json.loads(raw_content)
-        
-        # We do the "Strict Delaware" check here in Python code
-        # This prevents the AI from getting 'stage fright' and returning 0 results
-        verified = []
-        for f in firms:
-            addr = f.get('address', '').upper()
-            if " DE " in addr or "DELAWARE" in addr or ", DE" in addr:
-                verified.append(f)
-        
-        print(f"✅ Successfully found and verified {len(verified)} firms.")
-        return verified
+            # Extract JSON from potential markdown/text
+            json_match = re.search(r'\[\s*\{.*\}\s*\]', raw_content, re.DOTALL)
+            if json_match:
+                batch = json.loads(re.sub(r',(\s*[}\]])', r'\1', json_match.group(0)))
+                
+                # Verify and de-duplicate
+                for firm in batch:
+                    # Simple filter to ensure we don't add PA/NJ firms
+                    addr = firm.get('address', '').upper()
+                    name = firm.get('name', '')
+                    if ("DE" in addr or "DELAWARE" in addr) and not any(f['name'] == name for f in all_verified_firms):
+                        all_verified_firms.append(firm)
+                        print(f"  ✅ Added: {name}")
+                
+            if len(all_verified_firms) < 10:
+                print(f"  ⏳ Have {len(all_verified_firms)}/10. Moving to next city...")
+                time.sleep(2) # Brief pause to avoid rate limits
 
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        return []
+        except Exception as e:
+            print(f"  ⚠️  Error in {city} batch: {e}")
+            continue
+
+    print(f"🎯 Final Count: {len(all_verified_firms)} verified Delaware firms.")
+    return all_verified_firms[:10]
 
 def send_to_supabase(firms):
     if not firms:
-        print("⚠️ No firms to upload.")
+        print("⚠️ No firms found to upload.")
         return
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {SUPABASE_ANON_KEY}"}
     try:
         r = requests.post(WEBHOOK_URL, headers=headers, json={"firms": firms}, timeout=30)
-        print("🚀 Data sent to Supabase!" if r.status_code == 200 else f"✗ Error: {r.text}")
+        print("🚀 Successfully updated Supabase!" if r.status_code == 200 else f"✗ Upload failed: {r.text}")
     except Exception as e:
         print(f"❌ Upload Error: {e}")
 
