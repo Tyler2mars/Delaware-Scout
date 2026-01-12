@@ -108,4 +108,14 @@ def send_to_supabase(firms):
     
     try:
         r = requests.post(WEBHOOK_URL, headers=headers, json={"firms": firms}, timeout=30)
-        if r.status_
+        if r.status_code == 200:
+            print("✅ Successfully updated Supabase!")
+        else:
+            print(f"✗ Webhook Error: {r.status_code} - {r.text}")
+    except Exception as e:
+        print(f"❌ Upload Error: {e}")
+
+if __name__ == "__main__":
+    raw_list = get_firms()
+    filtered_list = check_for_duplicates(raw_list)
+    send_to_supabase(filtered_list[:10])
