@@ -11,7 +11,7 @@ client = OpenAI(
 
 # Configuration for Lovable/Supabase
 # Your existing secrets will work for this too
-WEBHOOK_URL = os.environ.get("FIRM_WEBHOOK_URL")
+WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 def get_firms():
