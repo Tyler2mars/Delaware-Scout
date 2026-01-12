@@ -1,163 +1,169 @@
 import os
 import json
+import re
 import requests
-from openai import OpenAI
+from xai_sdk import Client
+from xai_sdk.chat import user, system
+from xai_sdk.tools import web_search
 
-# Setup
-client = OpenAI(
-    api_key=os.environ.get("XAI_API_KEY"),
-    base_url="https://api.x.ai/v1",
-)
+# Setup xAI Client with web search
+client = Client(api_key=os.environ.get("XAI_API_KEY"))
 
 WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
-def search_web(query):
-    """
-    Use a real search API to find current businesses.
-    Options:
-    - SerpAPI (serpapi.com) - $50/mo for 5k searches
-    - ScraperAPI (scraperapi.com) - various plans
-    - Tavily AI (tavily.com) - AI-optimized search
-    """
-    SERPAPI_KEY = os.environ.get("SERPAPI_KEY")
+def get_firms():
+    print("Step 1: Searching web for Delaware Architecture & Design firms...\n")
     
-    params = {
-        "engine": "google",
-        "q": query,
-        "api_key": SERPAPI_KEY,
-        "num": 20  # Get more results to filter from
-    }
-    
-    try:
-        response = requests.get("https://serpapi.com/search", params=params)
-        return response.json().get("organic_results", [])
-    except Exception as e:
-        print(f"Search error: {e}")
-        return []
+    system_prompt = """You are a business directory specialist with web search capabilities.
 
-def verify_delaware_location(address, city):
-    """
-    Verify the address is actually in Delaware using a geocoding API
-    """
-    GEOCODING_KEY = os.environ.get("GEOCODING_API_KEY")  # e.g., Google Maps API
-    
-    try:
-        url = "https://maps.googleapis.com/maps/api/geocode/json"
-        params = {
-            "address": f"{address}, {city}, DE",
-            "key": GEOCODING_KEY
-        }
-        response = requests.get(url, params=params)
-        data = response.json()
-        
-        if data.get("results"):
-            result = data["results"][0]
-            # Check if Delaware is in the address components
-            for component in result.get("address_components", []):
-                if "administrative_area_level_1" in component.get("types", []):
-                    return component.get("short_name") == "DE"
-        return False
-    except:
-        return False
+Your mission: Find REAL, currently operating Architecture and Interior Design firms in Delaware.
 
-def extract_firm_data(search_results):
-    """
-    Use AI to parse search results into structured data
-    """
-    prompt = f"""Analyze these search results and extract information about Architecture and Interior Design firms in Delaware.
+Search Strategy:
+1. Search AIA Delaware chapter member directories
+2. Search Google for "architecture firms Delaware"
+3. Check professional associations and business directories
+4. Look for firms with verified websites and contact information
+5. Search individual Delaware cities (Wilmington, Newark, Dover, Rehoboth Beach)
 
-Search Results:
-{json.dumps(search_results[:10], indent=2)}
+Always verify:
+- Firm has an active, working website
+- Physical address in Delaware
+- Current operations (not closed)
+- Recent projects or news
 
-Extract ONLY firms that:
-1. Are explicitly located in Delaware (DE)
-2. Are architecture or interior design firms
-3. Have verifiable contact information
+Return ONLY valid JSON - no introductory text."""
 
-Return a JSON list with this structure:
+    user_prompt = """Find 10 REAL Architecture and Interior Design firms currently operating in Delaware.
+
+SEARCH QUERIES TO RUN:
+1. "AIA Delaware chapter members architects"
+2. "architecture firms Wilmington Delaware"
+3. "interior design firms Newark Delaware"
+4. "architects Dover Delaware"
+5. "design firms Rehoboth Beach Delaware"
+6. "Delaware licensed architects"
+7. "architectural services Delaware"
+
+VERIFICATION REQUIREMENTS:
+- Each firm MUST have a real, working website URL
+- Must have a Delaware address (not just satellite office)
+- Must show recent activity (projects, news, updates from 2024-2026)
+- Must specialize in architecture or interior design
+
+PROJECT TYPES TO PRIORITIZE:
+- Commercial architecture
+- Residential design
+- Interior design
+- Healthcare facilities
+- Educational buildings
+- Hospitality design
+
+For each firm found, return:
+{
+  "name": "Legal business name",
+  "address": "Full street address or 'Contact for address'",
+  "city": "Delaware city (Wilmington, Newark, Dover, etc.)",
+  "state": "DE",
+  "zip": "ZIP code if available",
+  "website": "Full URL - MUST be real and working",
+  "phone": "Phone number or null",
+  "contact_email": "Email or null",
+  "specialties": ["Commercial", "Residential", "Interior Design", etc.],
+  "description": "2-3 sentence description of their work and expertise",
+  "notable_projects": ["Project 1", "Project 2"] or [],
+  "year_established": "Year or null",
+  "firm_size": "Number of employees or 'Small/Medium/Large'",
+  "certifications": ["AIA", "LEED", "NCARB", etc.] or [],
+  "source_url": "Where you found this information",
+  "verification_date": "Today's date: January 11, 2026"
+}
+
+CRITICAL REQUIREMENTS:
+1. MUST have working website URL from your web search
+2. MUST be physically located in Delaware
+3. MUST show signs of current operation
+4. NO GUESSING - only include firms you found through web search
+
+Return JSON array:
 [
-  {{
-    "name": "Firm legal name",
-    "address": "Street address",
-    "city": "Delaware city",
-    "website": "Official website URL from search result",
-    "phone": "Phone number if found",
-    "contact_email": "Email if found or null",
-    "specialties": ["List", "of", "specialties"],
-    "description": "Brief description",
-    "source_url": "The URL where this info was found"
-  }}
-]
-
-If you cannot find enough verified Delaware firms, return fewer results rather than guessing.
-CRITICAL: Only include firms you found in the search results. Do not make up firms."""
+  { firm object 1 },
+  { firm object 2 },
+  ...
+]"""
 
     try:
-        response = client.chat.completions.create(
-            model="grok-4-1-fast-non-reasoning",
-            messages=[
-                {"role": "system", "content": "You are a data extraction specialist. Extract only verified information from provided sources. Never fabricate data."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.1
+        # Create chat with web search enabled
+        chat = client.chat.create(
+            model="grok-4-1-fast",  # Use reasoning model for better search
+            tools=[web_search()],   # Enable real-time web search
         )
         
-        raw_content = response.choices[0].message.content.strip()
+        # Add messages
+        chat.append(system(system_prompt))
+        chat.append(user(user_prompt))
         
+        # Get response
+        print("🔍 Grok is searching the web for Delaware architecture firms...")
+        response = chat.sample()
+        
+        raw_content = response.content.strip()
+        print(f"📄 Received response ({len(raw_content)} characters)\n")
+        
+        # Clean markdown formatting
         if raw_content.startswith("```"):
-            raw_content = raw_content.split("\n", 1)[1].rsplit("\n", 1)[0].strip()
+            lines = raw_content.split("\n")
+            raw_content = "\n".join(lines[1:-1])
             if raw_content.startswith("json"):
                 raw_content = raw_content[4:].strip()
         
-        return json.loads(raw_content)
-    except Exception as e:
-        print(f"Extraction error: {e}")
-        return []
-
-def get_firms():
-    print("Step 1: Searching for Delaware Architecture & Design firms...")
-    
-    # Search multiple queries for better coverage
-    queries = [
-        "architecture firms Delaware",
-        "interior design firms Wilmington Delaware",
-        "architects Newark Delaware",
-        "design firms Dover Delaware"
-    ]
-    
-    all_results = []
-    for query in queries:
-        print(f"  Searching: {query}")
-        results = search_web(query)
-        all_results.extend(results)
-    
-    print(f"Step 2: Extracting firm data from {len(all_results)} search results...")
-    firms = extract_firm_data(all_results)
-    
-    print(f"Step 3: Verifying {len(firms)} firms...")
-    verified_firms = []
-    for firm in firms:
-        # Optional: verify location with geocoding
-        # is_valid = verify_delaware_location(firm.get("address"), firm.get("city"))
-        # if is_valid:
-        #     verified_firms.append(firm)
+        # Fix trailing commas
+        raw_content = re.sub(r',(\s*[}\]])', r'\1', raw_content)
         
-        # For now, just check if they have required fields
-        if firm.get("name") and firm.get("website") and firm.get("city"):
-            verified_firms.append(firm)
-            print(f"  ✓ {firm['name']} - {firm['city']}")
-        else:
-            print(f"  ✗ Skipped incomplete entry")
-    
-    return verified_firms
+        # Parse JSON
+        firms = json.loads(raw_content)
+        
+        # Validate results
+        validated_firms = []
+        for i, firm in enumerate(firms, 1):
+            # Check required fields
+            if not firm.get('website') or not firm['website'].startswith('http'):
+                print(f"⚠️  Firm {i}: Skipping '{firm.get('name', 'Unknown')}' - No valid website")
+                continue
+            
+            if not firm.get('name'):
+                print(f"⚠️  Firm {i}: Skipping - Missing firm name")
+                continue
+            
+            if not firm.get('city'):
+                print(f"⚠️  Firm {i}: Skipping '{firm.get('name')}' - No Delaware city listed")
+                continue
+            
+            validated_firms.append(firm)
+            print(f"✅ Firm {i}: {firm.get('name')} - {firm.get('city')}")
+            print(f"   Website: {firm.get('website')}")
+            print(f"   Specialties: {', '.join(firm.get('specialties', []))}")
+            print()
+        
+        print(f"\n✅ Found {len(validated_firms)} verified Delaware firms\n")
+        return validated_firms
+        
+    except json.JSONDecodeError as e:
+        print(f"❌ JSON parsing error: {e}")
+        print(f"Raw response: {raw_content[:500]}...")
+        return []
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
 
 def send_to_supabase(firms):
     if not firms:
-        print("No firms found to send.")
+        print("⚠️  No firms to send.")
         return
     
-    print(f"\nStep 4: Sending {len(firms)} verified firms to Supabase...")
+    print(f"Step 2: Sending {len(firms)} firms to Supabase...\n")
     
     headers = {
         "Content-Type": "application/json",
@@ -168,14 +174,30 @@ def send_to_supabase(firms):
     
     try:
         response = requests.post(WEBHOOK_URL, headers=headers, json=payload, timeout=30)
+        
         if response.status_code == 200:
-            print("✓ SUCCESS: Firms added to directory.")
+            print("✅ SUCCESS: Firms uploaded to database")
+            print("\n📊 Summary:")
+            for i, firm in enumerate(firms, 1):
+                print(f"  {i}. {firm.get('name')} - {firm.get('city')}")
         else:
-            print(f"✗ FAILED: {response.status_code} - {response.text}")
+            print(f"❌ FAILED: {response.status_code}")
+            print(f"Response: {response.text}")
     except Exception as e:
-        print(f"ERROR: {e}")
+        print(f"❌ Error: {e}")
 
 if __name__ == "__main__":
+    print("="*60)
+    print("Delaware Architecture & Design Firm Finder")
+    print("Using Grok Web Search")
+    print("="*60 + "\n")
+    
     found_firms = get_firms()
-    print(f"\nTotal verified firms: {len(found_firms)}")
-    send_to_supabase(found_firms)
+    
+    if found_firms:
+        print("="*60)
+        print(f"🎯 Found {len(found_firms)} verified firms")
+        print("="*60 + "\n")
+        send_to_supabase(found_firms)
+    else:
+        print("⚠️  No firms found - check search parameters")
