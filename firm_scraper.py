@@ -8,7 +8,7 @@ SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 def get_firms():
     # Focused list of cities to keep tokens low
-    cities = ["Bear, DE", "Camden, DE", "Wilmington, DE"]
+    cities = ["Bear, DE", "Newark, DE"]
     all_found_firms = []
     
     print("🚀 Running Scraper (Direct Upload Mode)")
@@ -17,7 +17,7 @@ def get_firms():
         print(f"🔍 Searching {city}...")
         
         # Concise prompt to save input tokens
-        prompt = f"Return a JSON array of 5 architecture/interior design firms in {city}, DE. Fields: name, address, website. No conversational filler."
+        prompt = f"Return a JSON array of 10 architecture/interior design firms in {city}, DE. Fields: name, address, website. No conversational filler."
 
         try:
             # We use tools=[] if you want it to use its internal knowledge or add tools=[web_search()]
