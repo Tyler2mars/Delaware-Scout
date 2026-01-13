@@ -8,7 +8,7 @@ SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 def get_firms():
     # Focused list of cities to keep tokens low
-    cities = ["Bear, DE", "Newark, DE"]
+    cities = ["Bear, DE", "Wilmington, DE"]
     all_found_firms = []
     
     print("🚀 Running Scraper (Direct Upload Mode)")
