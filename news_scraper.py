@@ -14,30 +14,33 @@ WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 def get_delaware_news():
-    print("Step 1: Fetching Delaware construction news from multiple sources...")
+    print("Step 1: Fetching statewide Delaware construction news (Lookback: 4 days)...")
     
-    # Multiple search queries to catch different types of projects
+    # IMPROVEMENT #2: Intent-based keywords for early-phase discovery
+    intent_query = "%28proposed+OR+approved+OR+zoning+OR+%22breaking+ground%22%29"
+    
     rss_sources = [
-        # General construction
-        "https://news.google.com/rss/search?q=Delaware+construction+development+when:7d&hl=en-US&gl=US&ceid=US:en",
+        # --- STATEWIDE & SECTOR SPECIFIC ---
+        f"https://news.google.com/rss/search?q=Delaware+construction+{intent_query}+when:4d&hl=en-US&gl=US&ceid=US:en",
+        f"https://news.google.com/rss/search?q=Delaware+hospital+medical+construction+when:4d&hl=en-US&gl=US&ceid=US:en",
+        f"https://news.google.com/rss/search?q=Delaware+apartment+multifamily+construction+when:4d&hl=en-US&gl=US&ceid=US:en",
+        f"https://news.google.com/rss/search?q=Delaware+commercial+real+estate+new+project+when:4d&hl=en-US&gl=US&ceid=US:en",
         
-        # Specific project types
-        "https://news.google.com/rss/search?q=Delaware+hospital+medical+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
-        "https://news.google.com/rss/search?q=Delaware+apartment+multifamily+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
-        "https://news.google.com/rss/search?q=Delaware+office+building+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
-        "https://news.google.com/rss/search?q=Delaware+school+university+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
-        "https://news.google.com/rss/search?q=Delaware+hotel+hospitality+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
-        "https://news.google.com/rss/search?q=Delaware+retail+shopping+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
+        # --- COUNTY SWEEPS (Covers rural and suburban Delaware) ---
+        f"https://news.google.com/rss/search?q=%22New+Castle+County%22+construction+{intent_query}+when:4d&hl=en-US&gl=US&ceid=US:en",
+        f"https://news.google.com/rss/search?q=%22Kent+County%22+Delaware+construction+{intent_query}+when:4d&hl=en-US&gl=US&ceid=US:en",
+        f"https://news.google.com/rss/search?q=%22Sussex+County%22+Delaware+construction+{intent_query}+when:4d&hl=en-US&gl=US&ceid=US:en",
         
-        # Major Delaware cities
-        "https://news.google.com/rss/search?q=Wilmington+Delaware+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
-        "https://news.google.com/rss/search?q=Dover+Delaware+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
-        "https://news.google.com/rss/search?q=Newark+Delaware+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
-        "https://news.google.com/rss/search?q=Rehoboth+Beach+construction+when:7d&hl=en-US&gl=US&ceid=US:en",
+        # --- MAJOR CITIES & GROWTH HUBS ---
+        f"https://news.google.com/rss/search?q=Wilmington+Delaware+construction+{intent_query}+when:4d&hl=en-US&gl=US&ceid=US:en",
+        f"https://news.google.com/rss/search?q=Dover+Delaware+construction+{intent_query}+when:4d&hl=en-US&gl=US&ceid=US:en",
+        f"https://news.google.com/rss/search?q=Newark+Delaware+construction+{intent_query}+when:4d&hl=en-US&gl=US&ceid=US:en",
+        f"https://news.google.com/rss/search?q=Middletown+Delaware+construction+{intent_query}+when:4d&hl=en-US&gl=US&ceid=US:en",
+        f"https://news.google.com/rss/search?q=Smyrna+Delaware+construction+{intent_query}+when:4d&hl=en-US&gl=US&ceid=US:en",
+        f"https://news.google.com/rss/search?q=Milford+Delaware+construction+{intent_query}+when:4d&hl=en-US&gl=US&ceid=US:en",
         
-        # Commercial real estate terms
-        "https://news.google.com/rss/search?q=Delaware+renovation+remodel+when:7d&hl=en-US&gl=US&ceid=US:en",
-        "https://news.google.com/rss/search?q=Delaware+commercial+real+estate+when:7d&hl=en-US&gl=US&ceid=US:en",
+        # --- COASTAL/REGIONAL ---
+        f"https://news.google.com/rss/search?q=%28Rehoboth+OR+Lewes+OR+Seaford%29+construction+{intent_query}+when:4d&hl=en-US&gl=US&ceid=US:en",
     ]
     
     all_articles = []
@@ -46,8 +49,7 @@ def get_delaware_news():
     for rss_url in rss_sources:
         try:
             feed = feedparser.parse(rss_url)
-            for entry in feed.entries[:10]:  # Top 10 from each source
-                # Deduplicate by URL
+            for entry in feed.entries[:10]:
                 if entry.link not in seen_urls:
                     seen_urls.add(entry.link)
                     all_articles.append({
@@ -56,174 +58,58 @@ def get_delaware_news():
                         "published": entry.published
                     })
         except Exception as e:
-            print(f"Error fetching from {rss_url[:50]}...: {e}")
+            print(f"Error fetching from {rss_url[:40]}...: {e}")
             continue
     
-    print(f"Found {len(all_articles)} unique articles from {len(rss_sources)} sources")
+    print(f"Found {len(all_articles)} unique articles across Delaware.")
     return all_articles
 
 def analyze_news_with_grok(articles):
-    print("Step 2: Asking Grok to filter for relevant project news...")
-    
-    # Updated prompt to ensure proper format and extract more details
+    print("Step 2: Grok analysis and filtering...")
+    if not articles: return []
+
     prompt = f"""
-    Analyze the following list of news headlines. 
+    Analyze these Delaware news headlines.
     
-    FILTERING RULES:
-    1. INCLUDE: Building construction, renovations, tenant improvements, new facilities
-    2. EXCLUDE: Road/highway paving, bridge construction, infrastructure (unless it includes a building)
-    3. EXCLUDE: Articles just about financing, sales, or leasing (unless construction is mentioned)
+    FILTERING: Include only building construction, renovations, and new facilities.
+    EXCLUDE: Pure roadwork, paving, or real estate sales without a construction component.
     
-    CATEGORIZATION:
-    Categorize into EXACTLY ONE sector: Healthcare, Government, Corporate, Education, Multi Family, Hospitality, Senior Living, or Retail.
+    CATEGORIES: Healthcare, Government, Corporate, Education, Multi Family, Hospitality, Senior Living, or Retail.
     
-    EXTRACTION REQUIREMENTS:
-    For each relevant article, extract:
-    - title: Article headline
-    - source_url: Full URL
-    - sector: One of the exact sector names above
-    - summary: 2-3 sentence summary including project details
-    - location: Specific city/area in Delaware (e.g., "Wilmington", "Dover", "Newark")
-    - estimated_sq_ft: Square footage if mentioned (number only, or null)
-    - project_value: Dollar value if mentioned (number only, or null)
-    - developer: Developer/owner name if mentioned (or null)
-    - contractor: General contractor if mentioned (or null)
-    - project_phase: "Planning", "Permitting", "Under Construction", or "Completed" (best guess)
-    - opportunity_score: Rate 1-10 based on: size (bigger=higher), detail level (more detail=higher), timeline urgency (sooner=higher)
+    EXTRACT: title, source_url, sector, summary (2-3 sentences), location, estimated_sq_ft, project_value, developer, contractor, project_phase, opportunity_score (1-10).
     
-    Return ONLY a valid JSON array with this exact structure:
-    [
-      {{
-        "title": "Article title",
-        "source_url": "Full URL",
-        "sector": "Healthcare",
-        "summary": "Detailed summary with key facts",
-        "location": "Wilmington",
-        "estimated_sq_ft": 50000,
-        "project_value": 15000000,
-        "developer": "ABC Development Corp",
-        "contractor": "XYZ Construction",
-        "project_phase": "Under Construction",
-        "opportunity_score": 8
-      }}
-    ]
-    
-    CRITICAL: 
-    - Use EXACT sector names (case-sensitive)
-    - Return ONLY the JSON array, no explanatory text
-    - Use null for fields you can't extract
-    
-    Headlines:
-    {json.dumps(articles, indent=2)}
+    Return ONLY a JSON array. Use null for unknown values.
+    Headlines: {json.dumps(articles)}
     """
     
     try:
         response = client.chat.completions.create(
             model="grok-4-1-fast-non-reasoning",
             messages=[
-                {"role": "system", "content": "You are a construction analyst. Return valid JSON only with no markdown formatting."},
+                {"role": "system", "content": "You are a construction analyst. Return valid JSON only."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1
         )
-        
-        # Clean the output
         content = response.choices[0].message.content.strip()
-        
-        # Remove markdown code blocks if present
+        # Cleaning markdown formatting if Grok adds it
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
-        
-        # Parse JSON
-        parsed = json.loads(content)
-        
-        # Validate and clean the data
-        valid_sectors = ["Healthcare", "Government", "Corporate", "Education", 
-                        "Multi Family", "Hospitality", "Senior Living", "Retail"]
-        
-        cleaned_items = []
-        for item in parsed:
-            # Ensure all required fields exist
-            if not all(key in item for key in ["title", "source_url", "sector"]):
-                print(f"Skipping item missing required fields: {item}")
-                continue
-            
-            # Validate sector
-            if item["sector"] not in valid_sectors:
-                print(f"Invalid sector '{item['sector']}' for article: {item['title']}")
-                continue
-            
-            # Ensure summary exists (use title if missing)
-            if "summary" not in item or not item["summary"]:
-                item["summary"] = item["title"]
-            
-            # Build cleaned item with all fields
-            cleaned_item = {
-                "title": str(item["title"]).strip(),
-                "source_url": str(item["source_url"]).strip(),
-                "sector": str(item["sector"]).strip(),
-                "summary": str(item["summary"]).strip(),
-            }
-            
-            # Add optional fields if they exist and aren't null
-            optional_fields = ["location", "estimated_sq_ft", "project_value", 
-                             "developer", "contractor", "project_phase", "opportunity_score"]
-            
-            for field in optional_fields:
-                if field in item and item[field] is not None and item[field] != "null":
-                    cleaned_item[field] = item[field]
-            
-            cleaned_items.append(cleaned_item)
-        
-        print(f"Successfully parsed {len(cleaned_items)} valid news items")
-        return cleaned_items
-        
-    except json.JSONDecodeError as e:
-        print(f"JSON Parse Error: {e}")
-        print(f"Raw content: {content}")
-        return []
+        return json.loads(content)
     except Exception as e:
         print(f"Grok Analysis Error: {e}")
         return []
 
 def send_to_lovable(news_items):
     if not news_items:
-        print("No relevant news found.")
+        print("No relevant news to send.")
         return
     
-    print(f"Step 3: Sending {len(news_items)} news items to Lovable...")
-    
-    headers = {
-        "Content-Type": "application/json"
-    }
-    
-    payload = {"news": news_items}
-    
-    # Debug: Print what we're sending
-    print(f"Payload preview: {json.dumps(payload, indent=2)[:500]}...")
-    
+    print(f"Step 3: Sending {len(news_items)} items to Lovable...")
     try:
-        response = requests.post(
-            WEBHOOK_URL, 
-            headers=headers, 
-            json=payload, 
-            timeout=30
-        )
-        
-        print(f"Response Status: {response.status_code}")
-        print(f"Response Body: {response.text}")
-        
-        if response.status_code == 200:
-            print("✅ SUCCESS: News updated.")
-            result = response.json()
-            print(f"Details: {result}")
-        else:
-            print(f"❌ FAILED: {response.status_code}")
-            print(f"Error details: {response.text}")
-            
-    except requests.exceptions.RequestException as e:
+        response = requests.post(WEBHOOK_URL, json={"news": news_items}, timeout=30)
+        print(f"Status: {response.status_code}")
+    except Exception as e:
         print(f"Request Error: {e}")
 
 if __name__ == "__main__":
