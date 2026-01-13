@@ -18,10 +18,9 @@ TABLE_NAME = "design_firms"
 def get_firms():
     # COMPREHENSIVE CITY LIST: Major hubs + boutique growth towns
     cities = [
-        "Wilmington, DE", "Newark, DE", "Middletown, DE", "Dover, DE",
+        "Newark, DE", "Middletown, DE",
         "Hockessin, DE", "Milton, DE", "Smyrna, DE", "Milford, DE", 
-        "Georgetown, DE", "Lewes, DE", "Rehoboth Beach, DE", 
-        "Selbyville, DE", "Millsboro, DE", "Ocean View, DE"
+        "Lewes, DE", "Millsboro, DE"
     ]
     
     all_found_firms = []
