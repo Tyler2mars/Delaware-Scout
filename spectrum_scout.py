@@ -107,7 +107,7 @@ For each project, return a JSON object with these fields:
   "address": "Street address or 'Site location TBD'",
   "city": "City in Delaware",
   "county": "New Castle, Kent, or Sussex",
-  "sector": "Healthcare|Government|Corporate|Education|Multi-Family|Hospitality|Senior Living|Retail|Mixed-Use",
+  "sector": "Healthcare|Government|Corporate|Education|Multi Family|Hospitality|Senior Living|Retail|Mixed-Use",
   "budget": "Estimated project cost (e.g., '$50M' or 'TBD')",
   "source_url": "REQUIRED - Direct URL to news article, planning doc, or announcement",
   "designer": "Architectural/engineering firm name or 'Design RFP pending'",
