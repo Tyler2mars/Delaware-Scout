@@ -9,7 +9,7 @@ from xai_sdk.tools import web_search
 # 1. Setup xAI Client
 client = Client(api_key=os.environ.get("XAI_API_KEY"))
 
-# 2. Environment Variables
+# 2. Environment Variables (from your .yml)
 WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL") 
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
@@ -20,11 +20,12 @@ def get_leads():
 Find vertical building projects in Delaware in PLANNING or DESIGN phase.
 Target interior flooring opportunities (Hospitals, Schools, Offices, Multifamily)."""
 
+    # We use the exact column names from your CSV: architect, source, status, etc.
     user_prompt = """Find 10 REAL vertical construction projects in Delaware.
 TODAY'S DATE: January 14, 2026. 
 ONLY include projects with future start dates (Q2 2026+).
 
-Return a JSON array of objects using EXACTLY these keys to match my database:
+Return a JSON array of objects using these exact keys:
 {
   "name": "Project Name",
   "address": "Street address",
@@ -40,7 +41,7 @@ Return a JSON array of objects using EXACTLY these keys to match my database:
   "flooring_tags": ["LVT", "Carpet", "Tile"],
   "latitude": 39.xxxx,
   "longitude": -75.xxxx,
-  "notes": "Include flooring scope and construction timeline details here"
+  "notes": "Detailed flooring scope and timeline"
 }"""
 
     try:
@@ -56,7 +57,7 @@ Return a JSON array of objects using EXACTLY these keys to match my database:
         response = chat.sample()
         raw_content = response.content.strip()
 
-        # Extract JSON
+        # Extract the JSON array block
         json_match = re.search(r'\[\s*{.*}\s*\]', raw_content, re.DOTALL)
         if json_match:
             raw_content = json_match.group(0)
@@ -65,32 +66,40 @@ Return a JSON array of objects using EXACTLY these keys to match my database:
         return leads
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Error during search: {e}")
         return []
 
 def send_to_supabase(leads):
-    if not leads: return
+    if not leads:
+        print("⚠️ No leads found to send.")
+        return
     
     print(f"\nStep 2: Sending {len(leads)} leads to Supabase...")
     
-    # IMPORTANT: Use Service Role Key if you have RLS issues
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
-        "Prefer": "return=minimal"
+        "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
     }
     
+    # THE FIX: Wrap the list in a dictionary with the key "leads"
+    # This matches the error requirement: 'Request body must contain a "leads" array'
+    payload = {"leads": leads}
+    
     try:
-        # Match the payload to what your specific webhook expects
-        # If your webhook expects a list directly: json=leads
-        # If it expects an object with a leads key: json={"leads": leads}
-        response = requests.post(WEBHOOK_URL, headers=headers, json=leads, timeout=30)
+        response = requests.post(
+            WEBHOOK_URL, 
+            headers=headers, 
+            json=payload, 
+            timeout=30
+        )
         
         print(f"📊 Status: {response.status_code}")
-        if response.status_code not in [200, 201]:
-            print(f"📝 Error Details: {response.text}")
+        
+        if response.status_code in [200, 201]:
+            print("✅ Data successfully synced to Supabase/Lovable!")
         else:
-            print("✅ Data successfully synced to Supabase.")
+            print(f"❌ DATABASE REJECTED DATA: {response.status_code}")
+            print(f"📝 Error Details: {response.text}")
             
     except Exception as e:
         print(f"❌ Connection Error: {e}")
