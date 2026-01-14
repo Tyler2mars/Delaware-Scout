@@ -14,7 +14,7 @@ WEBHOOK_URL = os.environ.get("SUPABASE_WEBHOOK_URL")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 def get_delaware_news():
-    print("Step 1: Fetching statewide Delaware construction news (Lookback: 4 days)...")
+    print("Step 1: Fetching statewide Delaware construction news (Lookback: 3 days)...")
     
     # IMPROVEMENT #2: Intent-based keywords for early-phase discovery
     intent_query = "%28proposed+OR+approved+OR+zoning+OR+%22breaking+ground%22%29"
